@@ -20,6 +20,49 @@ const rtcConfig: RTCConfiguration = {
   iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
 }
 
+/** Resolves when the socket is OPEN; rejects if it errors or closes before that. */
+function waitForWebSocketOpen(ws: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      resolve()
+      return
+    }
+    if (ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+      reject(new Error('WebSocket ya estaba cerrado'))
+      return
+    }
+    const onOpen = () => {
+      cleanup()
+      resolve()
+    }
+    const onFail = () => {
+      cleanup()
+      reject(new Error('WebSocket no pudo abrirse'))
+    }
+    const cleanup = () => {
+      ws.removeEventListener('open', onOpen)
+      ws.removeEventListener('error', onFail)
+      ws.removeEventListener('close', onFail)
+    }
+    ws.addEventListener('open', onOpen)
+    ws.addEventListener('error', onFail)
+    ws.addEventListener('close', onFail)
+  })
+}
+
+function normalizeSignalingUrl(raw: string): string {
+  const t = raw.trim()
+  if (!t) return t
+  if (t.startsWith('https://')) return `wss://${t.slice('https://'.length)}`
+  if (t.startsWith('http://')) return `ws://${t.slice('http://'.length)}`
+  return t
+}
+
+function wsSend(ws: WebSocket | null, msg: SignalMessage) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return
+  ws.send(JSON.stringify(msg))
+}
+
 export function VideoCall() {
   const [roomId, setRoomId] = useState<string>(() => randomRoomId())
   const [joinedRoomId, setJoinedRoomId] = useState<string | null>(null)
@@ -40,7 +83,7 @@ export function VideoCall() {
 
   const signalingUrl = useMemo(() => {
     if (typeof window === 'undefined') return 'ws://localhost:3001'
-    const env = (process.env.NEXT_PUBLIC_SIGNALING_URL ?? '').trim()
+    const env = normalizeSignalingUrl(process.env.NEXT_PUBLIC_SIGNALING_URL ?? '')
     if (env) return env
     const host = window.location.hostname || 'localhost'
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -80,7 +123,7 @@ export function VideoCall() {
     setJoinedRoomId(null)
 
     try {
-      wsRef.current?.send(JSON.stringify({ type: 'leave' } satisfies SignalMessage))
+      wsSend(wsRef.current, { type: 'leave' })
     } catch {}
 
     try {
@@ -106,9 +149,7 @@ export function VideoCall() {
     pc.onicecandidate = (event) => {
       if (!event.candidate) return
       try {
-        wsRef.current?.send(
-          JSON.stringify({ type: 'ice-candidate', candidate: event.candidate.toJSON() } satisfies SignalMessage),
-        )
+        wsSend(wsRef.current, { type: 'ice-candidate', candidate: event.candidate.toJSON() })
       } catch {}
     }
 
@@ -131,7 +172,7 @@ export function VideoCall() {
         const offer = await pc.createOffer()
         if (pc.signalingState !== 'stable') return
         await pc.setLocalDescription(offer)
-        wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription! } satisfies SignalMessage))
+        wsSend(wsRef.current, { type: 'offer', sdp: pc.localDescription! })
       } catch (e) {
         console.error(e)
       } finally {
@@ -175,7 +216,7 @@ export function VideoCall() {
         await pc.setRemoteDescription(msg.sdp)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
-        wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription! } satisfies SignalMessage))
+        wsSend(wsRef.current, { type: 'answer', sdp: pc.localDescription! })
         return
       }
 
@@ -207,11 +248,6 @@ export function VideoCall() {
       const ws = new WebSocket(signalingUrl)
       wsRef.current = ws
 
-      ws.onopen = () => {
-        setStatus('Uniéndose a la sala…')
-        ws.send(JSON.stringify({ type: 'join', roomId } satisfies SignalMessage))
-      }
-
       ws.onmessage = async (event) => {
         const data = JSON.parse(String(event.data)) as SignalMessage
         await handleSignal(data)
@@ -219,6 +255,11 @@ export function VideoCall() {
 
       ws.onerror = () => setStatus('Error de señalización (¿está corriendo el servidor?)')
       ws.onclose = () => setStatus('Señalización desconectada')
+
+      await waitForWebSocketOpen(ws)
+
+      setStatus('Uniéndose a la sala…')
+      wsSend(ws, { type: 'join', roomId })
 
       const pc = createPeerConnection()
       for (const track of stream.getTracks()) pc.addTrack(track, stream)
