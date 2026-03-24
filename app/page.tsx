@@ -44,6 +44,8 @@ export default function VideoChatApp() {
   const [searching, setSearching] = useState(true);
   const [status, setStatus] = useState('Conectando al servidor...');
   const [dcReady, setDcReady] = useState(false);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+  const log = (msg: string) => setDebugLog(prev => [`${new Date().toLocaleTimeString()}: ${msg}`, ...prev].slice(0, 8));
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -198,6 +200,7 @@ export default function VideoChatApp() {
 
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
+        log(`RTC: ${st}`);
         if (st === 'connected') { setSearching(false); setStatus('Conectado'); }
         if (st === 'connecting') setStatus('Conectando video...');
         if (st === 'disconnected') setStatus('Conexión interrumpida, esperando...');
@@ -215,16 +218,19 @@ export default function VideoChatApp() {
       // Only the impolite peer (polite=false) creates the offer — no collision possible
       if (!polite) {
         try {
+          log('Creando offer...');
           const offer = await pc.createOffer();
           if (pcRef.current !== pc) return; // PC was replaced while awaiting, abort
           await pc.setLocalDescription(offer);
           wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription! }));
-        } catch (e) { console.error('offer error:', e); }
+          log('Offer enviado');
+        } catch (e) { log(`Error offer: ${e}`); }
       }
     };
 
     const handleSignal = async (msg: SignalMessage) => {
       if (msg.type === 'waiting') {
+        log('Servidor: waiting');
         setSearching(true);
         setStatus('Buscando a alguien...');
         setRoomId('');
@@ -234,6 +240,7 @@ export default function VideoChatApp() {
       }
 
       if (msg.type === 'matched') {
+        log(`Matched sala=${msg.roomId} polite=${msg.polite}`);
         setRoomId(msg.roomId);
         setStatus('Conectando video...');
         setMessages([]);
@@ -262,8 +269,8 @@ export default function VideoChatApp() {
       if (!pc) return;
 
       if (msg.type === 'offer') {
+        log(`Offer recibido (${iceCandidateQueueRef.current.length} cands en cola)`);
         await pc.setRemoteDescription(msg.sdp);
-        // Flush candidates that arrived before the offer
         for (const c of iceCandidateQueueRef.current) {
           try { await pc.addIceCandidate(c); } catch {}
         }
@@ -271,12 +278,13 @@ export default function VideoChatApp() {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription! }));
+        log('Answer enviado');
         return;
       }
 
       if (msg.type === 'answer') {
+        log(`Answer recibido (${iceCandidateQueueRef.current.length} cands en cola)`);
         await pc.setRemoteDescription(msg.sdp);
-        // Flush candidates that arrived before the answer
         for (const c of iceCandidateQueueRef.current) {
           try { await pc.addIceCandidate(c); } catch {}
         }
@@ -313,10 +321,11 @@ export default function VideoChatApp() {
         wsRef.current = ws;
 
         ws.onopen = () => {
+          log('WS abierto → find-match');
           setStatus('Buscando a alguien...');
           ws.send(JSON.stringify({ type: 'find-match' }));
         };
-        ws.onerror = () => setStatus('Error: no se pudo conectar al servidor de señalización');
+        ws.onerror = () => { log('WS error'); setStatus('Error: no se pudo conectar al servidor de señalización'); };
         ws.onmessage = async (event) => {
           try {
             const data = JSON.parse(String(event.data)) as SignalMessage;
@@ -378,6 +387,11 @@ export default function VideoChatApp() {
 
         {/* Status bar */}
         <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400">{status}</div>
+
+        {/* Debug panel */}
+        <div className="bg-black/60 px-3 py-1 text-xs text-green-400 font-mono max-h-24 overflow-y-auto">
+          {debugLog.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
 
         {/* Remote Video */}
         <div className="flex-1 relative overflow-hidden bg-gradient-to-b from-blue-100 to-gray-100">
