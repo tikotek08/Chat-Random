@@ -158,7 +158,7 @@ export default function VideoChatApp() {
       };
     };
 
-    const setupPc = (polite: boolean) => {
+    const setupPc = async (polite: boolean) => {
       cleanupPc();
       politeRef.current = polite;
 
@@ -172,7 +172,6 @@ export default function VideoChatApp() {
 
       pc.ontrack = (event) => {
         if (!remoteVideoRef.current) return;
-        // event.streams can be empty on some browsers — use addTrack instead
         if (!(remoteVideoRef.current.srcObject instanceof MediaStream)) {
           remoteVideoRef.current.srcObject = new MediaStream();
         }
@@ -181,8 +180,6 @@ export default function VideoChatApp() {
       };
 
       pc.ondatachannel = (event) => attachDataChannel(event.channel);
-      // Only the impolite peer (offerer) creates the data channel.
-      // If both sides create one they close each other's channel.
       if (!polite) {
         try { attachDataChannel(pc.createDataChannel('chat')); } catch {}
       }
@@ -194,25 +191,14 @@ export default function VideoChatApp() {
         } catch {}
       };
 
-      const makeOffer = async () => {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription! }));
-        } catch (e) { console.error(e); }
-      };
-
-      // Only the impolite peer (polite=false) initiates — eliminates offer collisions
-      pc.onnegotiationneeded = async () => {
-        if (!politeRef.current) await makeOffer();
-      };
+      // Disable onnegotiationneeded — we make the offer explicitly below
+      pc.onnegotiationneeded = () => {};
 
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
         if (st === 'connected') { setSearching(false); setStatus('Conectado'); }
         if (st === 'connecting') setStatus('Conectando video...');
         if (st === 'disconnected') setStatus('Conexión interrumpida, esperando...');
-        // Only act on 'failed' — 'disconnected' is temporary and can recover on its own
         if (st === 'failed') {
           cleanupPc();
           setSearching(true);
@@ -223,6 +209,16 @@ export default function VideoChatApp() {
           }
         }
       };
+
+      // Only the impolite peer (polite=false) creates the offer — no collision possible
+      if (!polite) {
+        try {
+          const offer = await pc.createOffer();
+          if (pcRef.current !== pc) return; // PC was replaced while awaiting, abort
+          await pc.setLocalDescription(offer);
+          wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription! }));
+        } catch (e) { console.error('offer error:', e); }
+      }
     };
 
     const handleSignal = async (msg: SignalMessage) => {
@@ -239,7 +235,7 @@ export default function VideoChatApp() {
         setRoomId(msg.roomId);
         setStatus('Conectando video...');
         setMessages([]);
-        setupPc(msg.polite);
+        await setupPc(msg.polite);
         return;
       }
 
