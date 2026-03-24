@@ -55,6 +55,10 @@ export default function VideoChatApp() {
   const remoteImgRef = useRef<HTMLImageElement>(null);
   const relayIntervalRef = useRef<number | null>(null);
   const lastFrameUrlRef = useRef<string | null>(null);
+  const audioRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioSourceBufferRef = useRef<SourceBuffer | null>(null);
+  const audioQueueRef = useRef<ArrayBuffer[]>([]);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -177,10 +181,23 @@ export default function VideoChatApp() {
         clearInterval(relayIntervalRef.current);
         relayIntervalRef.current = null;
       }
+      if (audioRecorderRef.current) {
+        try { audioRecorderRef.current.stop(); } catch {}
+        audioRecorderRef.current = null;
+      }
+      if (remoteAudioRef.current) {
+        try { remoteAudioRef.current.pause(); } catch {}
+        remoteAudioRef.current.src = '';
+        remoteAudioRef.current = null;
+      }
+      audioSourceBufferRef.current = null;
+      audioQueueRef.current = [];
     };
 
     const startRelayCapture = () => {
       stopRelayCapture();
+
+      // ── Video: canvas → JPEG → WebSocket (type byte 0) ──
       const canvas = document.createElement('canvas');
       canvas.width = 320; canvas.height = 240;
       const ctx = canvas.getContext('2d')!;
@@ -191,9 +208,54 @@ export default function VideoChatApp() {
         ctx.drawImage(video, 0, 0, 320, 240);
         canvas.toBlob(blob => {
           if (!blob) return;
-          blob.arrayBuffer().then(buf => wsRef.current?.send(buf));
+          blob.arrayBuffer().then(buf => {
+            const msg = new Uint8Array(1 + buf.byteLength);
+            msg[0] = 0; // video
+            msg.set(new Uint8Array(buf), 1);
+            wsRef.current?.send(msg.buffer);
+          });
         }, 'image/jpeg', 0.65);
       }, 100); // 10 fps
+
+      // ── Audio: MediaRecorder → WebM/Opus → WebSocket (type byte 1) ──
+      const stream = localStreamRef.current;
+      if (!stream || !stream.getAudioTracks().length) return;
+      const mimeType = 'audio/webm;codecs=opus';
+      if (!MediaSource.isTypeSupported(mimeType)) { log('Audio relay: formato no soportado'); return; }
+
+      // Playback side: MediaSource feeds an <audio> element
+      const ms = new MediaSource();
+      const audio = new Audio();
+      remoteAudioRef.current = audio;
+      audio.src = URL.createObjectURL(ms);
+      ms.addEventListener('sourceopen', () => {
+        try {
+          const sb = ms.addSourceBuffer(mimeType);
+          audioSourceBufferRef.current = sb;
+          const flush = () => {
+            if (!sb.updating && audioQueueRef.current.length > 0) {
+              try { sb.appendBuffer(audioQueueRef.current.shift()!); } catch {}
+            }
+          };
+          sb.addEventListener('updateend', flush);
+          flush();
+        } catch (e) { log(`Audio MediaSource error: ${e}`); }
+      });
+      audio.play().catch(() => {});
+
+      // Capture side: MediaRecorder sends chunks with type prefix 1
+      const audioStream = new MediaStream(stream.getAudioTracks());
+      const recorder = new MediaRecorder(audioStream, { mimeType });
+      audioRecorderRef.current = recorder;
+      recorder.ondataavailable = async (e) => {
+        if (e.data.size === 0 || wsRef.current?.readyState !== WebSocket.OPEN) return;
+        const buf = await e.data.arrayBuffer();
+        const msg = new Uint8Array(1 + buf.byteLength);
+        msg[0] = 1; // audio
+        msg.set(new Uint8Array(buf), 1);
+        wsRef.current.send(msg.buffer);
+      };
+      recorder.start(200); // 200 ms chunks
     };
 
     const activateRelay = () => {
@@ -392,13 +454,27 @@ export default function VideoChatApp() {
         ws.onerror = () => { log('WS error'); setStatus('Error: no se pudo conectar al servidor de señalización'); };
         ws.onmessage = async (event) => {
           try {
-            // Binary = video frame from relay
+            // Binary relay: first byte = type (0 = video, 1 = audio)
             if (event.data instanceof ArrayBuffer) {
-              const blob = new Blob([event.data], { type: 'image/jpeg' });
-              const url = URL.createObjectURL(blob);
-              if (lastFrameUrlRef.current) URL.revokeObjectURL(lastFrameUrlRef.current);
-              lastFrameUrlRef.current = url;
-              if (remoteImgRef.current) remoteImgRef.current.src = url;
+              const view = new Uint8Array(event.data);
+              const type = view[0];
+              const payload = event.data.slice(1);
+              if (type === 0) {
+                // JPEG video frame
+                const blob = new Blob([payload], { type: 'image/jpeg' });
+                const url = URL.createObjectURL(blob);
+                if (lastFrameUrlRef.current) URL.revokeObjectURL(lastFrameUrlRef.current);
+                lastFrameUrlRef.current = url;
+                if (remoteImgRef.current) remoteImgRef.current.src = url;
+              } else if (type === 1) {
+                // Audio WebM chunk
+                const sb = audioSourceBufferRef.current;
+                if (sb && !sb.updating) {
+                  try { sb.appendBuffer(payload); } catch {}
+                } else {
+                  audioQueueRef.current.push(payload);
+                }
+              }
               return;
             }
             const data = JSON.parse(String(event.data)) as SignalMessage;
@@ -440,6 +516,9 @@ export default function VideoChatApp() {
     if (relayIntervalRef.current !== null) { clearInterval(relayIntervalRef.current); relayIntervalRef.current = null; }
     if (lastFrameUrlRef.current) { URL.revokeObjectURL(lastFrameUrlRef.current); lastFrameUrlRef.current = null; }
     if (remoteImgRef.current) remoteImgRef.current.src = '';
+    if (audioRecorderRef.current) { try { audioRecorderRef.current.stop(); } catch {} audioRecorderRef.current = null; }
+    if (remoteAudioRef.current) { try { remoteAudioRef.current.pause(); } catch {} remoteAudioRef.current.src = ''; remoteAudioRef.current = null; }
+    audioSourceBufferRef.current = null; audioQueueRef.current = [];
     setRelayMode(false);
     setSearching(true);
     setMessages([]);
