@@ -35,8 +35,7 @@ export default function VideoChatApp() {
   const [status, setStatus] = useState('Conectando al servidor...');
   const [dcReady, setDcReady] = useState(false);
   const [relayMode, setRelayMode] = useState(false);
-  const [debugLog, setDebugLog] = useState<string[]>([]);
-  const log = (msg: string) => setDebugLog(prev => [`${new Date().toLocaleTimeString()}: ${msg}`, ...prev].slice(0, 8));
+  const log = (..._: unknown[]) => {}; // disabled
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -306,19 +305,30 @@ export default function VideoChatApp() {
       // Disable onnegotiationneeded — we make the offer explicitly below
       pc.onnegotiationneeded = () => {};
 
+      const switchToRelay = () => {
+        if (pcRef.current !== pc) return;
+        cleanupPc();
+        if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'use-relay' }));
+        }
+        activateRelay();
+      };
+
+      // If WebRTC doesn't connect within 5 s, fall back to WS relay
+      const iceTimer = window.setTimeout(switchToRelay, 5000);
+
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
-        log(`RTC: ${st}`);
-        if (st === 'connected') { setSearching(false); setStatus('Conectado'); }
+        if (st === 'connected') {
+          clearTimeout(iceTimer);
+          setSearching(false);
+          setStatus('Conectado');
+        }
         if (st === 'connecting') setStatus('Conectando video...');
         if (st === 'disconnected') setStatus('Conexión interrumpida, esperando...');
         if (st === 'failed') {
-          cleanupPc();
-          // Activate WS relay fallback — peers are still connected to signaling server
-          if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'use-relay' }));
-          }
-          activateRelay();
+          clearTimeout(iceTimer);
+          switchToRelay();
         }
       };
 
@@ -545,11 +555,6 @@ export default function VideoChatApp() {
 
         {/* Status bar */}
         <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400">{status}</div>
-
-        {/* Debug panel */}
-        <div className="bg-black/60 px-3 py-1 text-xs text-green-400 font-mono max-h-24 overflow-y-auto">
-          {debugLog.map((l, i) => <div key={i}>{l}</div>)}
-        </div>
 
         {/* Remote Video */}
         <div className="flex-1 relative overflow-hidden bg-gradient-to-b from-blue-100 to-gray-100">
