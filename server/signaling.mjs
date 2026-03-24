@@ -120,7 +120,19 @@ function findMatch(ws) {
 wss.on('connection', (ws) => {
   ws.roomId = null
 
-  ws.on('message', (raw) => {
+  ws.on('message', (raw, isBinary) => {
+    // Binary frames = video relay — forward directly to peer
+    if (isBinary) {
+      const roomId = ws.roomId
+      if (!roomId) return
+      const peers = rooms.get(roomId)
+      if (!peers) return
+      for (const peer of peers) {
+        if (peer !== ws && peer.readyState === peer.OPEN) peer.send(raw, { binary: true })
+      }
+      return
+    }
+
     const data = safeJsonParse(String(raw))
     if (!data || typeof data !== 'object') return
 
@@ -138,7 +150,10 @@ wss.on('connection', (ws) => {
     const roomId = ws.roomId
     if (!roomId) return
 
-    if (data.type === 'offer' || data.type === 'answer' || data.type === 'ice-candidate') {
+    if (
+      data.type === 'offer' || data.type === 'answer' || data.type === 'ice-candidate' ||
+      data.type === 'relay-chat' || data.type === 'use-relay'
+    ) {
       broadcastToRoom(roomId, ws, data)
     }
   })

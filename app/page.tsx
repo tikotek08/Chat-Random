@@ -17,6 +17,8 @@ type SignalMessage =
   | { type: 'offer'; sdp: RTCSessionDescriptionInit }
   | { type: 'answer'; sdp: RTCSessionDescriptionInit }
   | { type: 'ice-candidate'; candidate: RTCIceCandidateInit }
+  | { type: 'relay-chat'; text: string }
+  | { type: 'use-relay' }
   | { type: 'leave' };
 
 const DEFAULT_RTC_CONFIG: RTCConfiguration = {
@@ -32,6 +34,7 @@ export default function VideoChatApp() {
   const [searching, setSearching] = useState(true);
   const [status, setStatus] = useState('Conectando al servidor...');
   const [dcReady, setDcReady] = useState(false);
+  const [relayMode, setRelayMode] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const log = (msg: string) => setDebugLog(prev => [`${new Date().toLocaleTimeString()}: ${msg}`, ...prev].slice(0, 8));
 
@@ -49,6 +52,9 @@ export default function VideoChatApp() {
   const politeRef = useRef(false);
   const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const rtcConfigRef = useRef<RTCConfiguration>(DEFAULT_RTC_CONFIG);
+  const remoteImgRef = useRef<HTMLImageElement>(null);
+  const relayIntervalRef = useRef<number | null>(null);
+  const lastFrameUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,11 +64,12 @@ export default function VideoChatApp() {
     const text = inputValue.trim();
     if (!text) return;
     setMessages((prev) => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
+    // Try DataChannel first (lower latency), fall back to WebSocket relay
     const dc = dataChannelRef.current;
     if (dc?.readyState === 'open') {
       try { dc.send(text); } catch {}
-    } else {
-      pendingChatRef.current.push(text);
+    } else if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'relay-chat', text }));
     }
     setInputValue('');
   };
@@ -165,6 +172,38 @@ export default function VideoChatApp() {
       };
     };
 
+    const stopRelayCapture = () => {
+      if (relayIntervalRef.current !== null) {
+        clearInterval(relayIntervalRef.current);
+        relayIntervalRef.current = null;
+      }
+    };
+
+    const startRelayCapture = () => {
+      stopRelayCapture();
+      const canvas = document.createElement('canvas');
+      canvas.width = 320; canvas.height = 240;
+      const ctx = canvas.getContext('2d')!;
+      relayIntervalRef.current = window.setInterval(() => {
+        const video = localVideoRef.current;
+        const ws = wsRef.current;
+        if (!video || !video.videoWidth || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ctx.drawImage(video, 0, 0, 320, 240);
+        canvas.toBlob(blob => {
+          if (!blob) return;
+          blob.arrayBuffer().then(buf => wsRef.current?.send(buf));
+        }, 'image/jpeg', 0.65);
+      }, 100); // 10 fps
+    };
+
+    const activateRelay = () => {
+      log('Relay WS activado');
+      setRelayMode(true);
+      setSearching(false);
+      setStatus('Conectado (relay)');
+      startRelayCapture();
+    };
+
     const setupPc = async (polite: boolean) => {
       cleanupPc();
       politeRef.current = polite;
@@ -213,12 +252,11 @@ export default function VideoChatApp() {
         if (st === 'disconnected') setStatus('Conexión interrumpida, esperando...');
         if (st === 'failed') {
           cleanupPc();
-          setSearching(true);
-          setRoomId('');
-          setStatus('Buscando a alguien...');
+          // Activate WS relay fallback — peers are still connected to signaling server
           if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'find-match' }));
+            wsRef.current.send(JSON.stringify({ type: 'use-relay' }));
           }
+          activateRelay();
         }
       };
 
@@ -257,18 +295,32 @@ export default function VideoChatApp() {
 
       if (msg.type === 'peer-left') {
         cleanupPc();
+        stopRelayCapture();
+        setRelayMode(false);
         setSearching(true);
         setRoomId('');
         setMessages([]);
         setStatus('El extraño se fue, buscando otro...');
         if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
-          // Small delay so the user sees the state change
           setTimeout(() => {
             if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({ type: 'find-match' }));
             }
           }, 1500);
         }
+        return;
+      }
+
+      if (msg.type === 'use-relay') {
+        log('Peer solicitó relay WS');
+        activateRelay();
+        return;
+      }
+
+      if (msg.type === 'relay-chat') {
+        const text = String(msg.text ?? '').trim();
+        if (!text) return;
+        setMessages(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, sender: 'stranger', text }]);
         return;
       }
 
@@ -329,6 +381,7 @@ export default function VideoChatApp() {
         if (attempt === 0) await fetchIceConfig();
 
         const ws = new WebSocket(getSignalingUrl());
+        ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -339,6 +392,15 @@ export default function VideoChatApp() {
         ws.onerror = () => { log('WS error'); setStatus('Error: no se pudo conectar al servidor de señalización'); };
         ws.onmessage = async (event) => {
           try {
+            // Binary = video frame from relay
+            if (event.data instanceof ArrayBuffer) {
+              const blob = new Blob([event.data], { type: 'image/jpeg' });
+              const url = URL.createObjectURL(blob);
+              if (lastFrameUrlRef.current) URL.revokeObjectURL(lastFrameUrlRef.current);
+              lastFrameUrlRef.current = url;
+              if (remoteImgRef.current) remoteImgRef.current.src = url;
+              return;
+            }
             const data = JSON.parse(String(event.data)) as SignalMessage;
             await handleSignal(data);
           } catch (e) { console.error(e); }
@@ -357,6 +419,8 @@ export default function VideoChatApp() {
     return () => {
       stopped = true;
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      stopRelayCapture();
+      if (lastFrameUrlRef.current) { URL.revokeObjectURL(lastFrameUrlRef.current); lastFrameUrlRef.current = null; }
       try { wsRef.current?.send(JSON.stringify({ type: 'leave' })); } catch {}
       try { wsRef.current?.close(); } catch {}
       wsRef.current = null;
@@ -373,6 +437,10 @@ export default function VideoChatApp() {
     if (pcRef.current) { try { pcRef.current.close(); } catch {} pcRef.current = null; }
     if (dataChannelRef.current) { try { dataChannelRef.current.close(); } catch {} dataChannelRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (relayIntervalRef.current !== null) { clearInterval(relayIntervalRef.current); relayIntervalRef.current = null; }
+    if (lastFrameUrlRef.current) { URL.revokeObjectURL(lastFrameUrlRef.current); lastFrameUrlRef.current = null; }
+    if (remoteImgRef.current) remoteImgRef.current.src = '';
+    setRelayMode(false);
     setSearching(true);
     setMessages([]);
     setRoomId('');
@@ -406,7 +474,9 @@ export default function VideoChatApp() {
 
         {/* Remote Video */}
         <div className="flex-1 relative overflow-hidden bg-gradient-to-b from-blue-100 to-gray-100">
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+          <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
+          {/* Relay mode: show MJPEG frames */}
+          <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
           {searching && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
               <div className="text-white text-center space-y-2">
@@ -450,8 +520,8 @@ export default function VideoChatApp() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={dcReady ? 'Escribe un mensaje...' : 'Esperando chat...'}
-                disabled={!dcReady}
+                placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
+                disabled={searching}
                 className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg drop-shadow-md disabled:opacity-50"
               />
               <button
