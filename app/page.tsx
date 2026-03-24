@@ -216,18 +216,13 @@ export default function VideoChatApp() {
 
       // ── Video: canvas → JPEG → WebSocket (type byte 0) ──
       const canvas = document.createElement('canvas');
+      canvas.width = 320; canvas.height = 240;
       const ctx = canvas.getContext('2d')!;
       relayIntervalRef.current = window.setInterval(() => {
         const video = localVideoRef.current;
         const ws = wsRef.current;
         if (!video || !video.videoWidth || !ws || ws.readyState !== WebSocket.OPEN) return;
-        // Match canvas to real video dimensions (preserves portrait/landscape aspect ratio)
-        const maxSide = 480;
-        const scale = maxSide / Math.max(video.videoWidth, video.videoHeight);
-        const w = Math.round(video.videoWidth * scale);
-        const h = Math.round(video.videoHeight * scale);
-        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-        ctx.drawImage(video, 0, 0, w, h);
+        ctx.drawImage(video, 0, 0, 320, 240);
         canvas.toBlob(blob => {
           if (!blob) return;
           blob.arrayBuffer().then(buf => {
@@ -630,8 +625,8 @@ export default function VideoChatApp() {
 
         {/* Remote Video — always in DOM, expands when local is hidden */}
         <div className="flex-1 relative overflow-hidden bg-black min-h-0">
-          <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-contain ${relayMode ? 'hidden' : ''}`} />
-          <img ref={remoteImgRef} alt="" className={`w-full h-full object-contain ${relayMode ? '' : 'hidden'}`} />
+          <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
+          <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
           {searching && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
               <div className="text-white text-center space-y-2">
