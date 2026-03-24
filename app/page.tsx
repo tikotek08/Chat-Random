@@ -63,12 +63,16 @@ export default function VideoChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
   // Keep --app-h / --app-top in sync with the visual viewport (mobile keyboard)
   useEffect(() => {
     const update = () => {
       const vv = window.visualViewport;
-      document.documentElement.style.setProperty('--app-h', `${vv?.height ?? window.innerHeight}px`);
+      const h = vv?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--app-h', `${h}px`);
       document.documentElement.style.setProperty('--app-top', `${vv?.offsetTop ?? 0}px`);
+      setKeyboardOpen(h < window.screen.height * 0.75);
     };
     update();
     window.visualViewport?.addEventListener('resize', update);
@@ -554,11 +558,58 @@ export default function VideoChatApp() {
     }
   };
 
+  const messagesList = messages.map((msg) => (
+    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+      {msg.sender === 'stranger' ? (
+        <div className="max-w-xs">
+          <div className="text-xs font-bold text-gray-300 mb-1 ml-2">EXTRAÑO</div>
+          <div className="bg-white text-gray-900 px-4 py-3 rounded-3xl shadow-lg">{msg.text}</div>
+        </div>
+      ) : (
+        <div className="max-w-xs">
+          <div className="text-xs font-bold text-blue-300 mb-1 mr-2 text-right">TÚ</div>
+          <div className="bg-blue-500 text-white px-4 py-3 rounded-3xl shadow-lg">{msg.text}</div>
+        </div>
+      )}
+    </div>
+  ));
+
+  const chatInput = (
+    <div className="px-4 py-3 flex gap-2 items-end">
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyPress={handleKeyPress}
+        placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
+        disabled={searching}
+        className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg disabled:opacity-50"
+      />
+      <button
+        onClick={handleSendMessage}
+        className="bg-blue-500 hover:bg-blue-600 text-white rounded-full p-3 flex items-center justify-center shadow-lg transition-colors"
+      >
+        <Send size={20} />
+      </button>
+    </div>
+  );
+
+  const actionButtons = (
+    <div className="px-4 pb-3 flex gap-3">
+      <button onClick={handleNext} className="bg-red-500 hover:bg-red-600 rounded-2xl p-3 flex items-center justify-center shadow-lg transition-colors">
+        <Square size={24} className="text-white fill-white" />
+      </button>
+      <button onClick={handleNext} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-3 font-bold text-center shadow-lg transition-colors">
+        Siguiente
+      </button>
+    </div>
+  );
+
   return (
     <div className="fixed left-0 right-0 flex justify-center bg-gray-900 overflow-hidden" style={{ top: 'var(--app-top, 0px)', height: 'var(--app-h, 100dvh)' }}>
       <div className="w-full max-w-md bg-gray-900 flex flex-col overflow-hidden h-full">
         {/* Top Status Bar */}
-        <div className="bg-black/40 backdrop-blur-md px-6 py-3 flex justify-between items-center relative z-40">
+        <div className="bg-black/40 backdrop-blur-md px-6 py-3 flex justify-between items-center relative z-40 shrink-0">
           <div className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-medium">
             {searching ? 'Buscando...' : 'Extraño'}
           </div>
@@ -570,12 +621,11 @@ export default function VideoChatApp() {
         </div>
 
         {/* Status bar */}
-        <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400">{status}</div>
+        <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400 shrink-0">{status}</div>
 
-        {/* Remote Video */}
-        <div className="flex-1 relative overflow-hidden bg-gradient-to-b from-blue-100 to-gray-100">
+        {/* Remote Video — expands to fill all space when keyboard is open */}
+        <div className="flex-1 relative overflow-hidden bg-black min-h-0">
           <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
-          {/* Relay mode: show MJPEG frames */}
           <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
           {searching && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
@@ -585,69 +635,40 @@ export default function VideoChatApp() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Local Video with Floating Chat */}
-        <div className="relative h-1/2 overflow-hidden">
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent rounded-b-3xl flex flex-col">
-            <div className="px-6 pt-4">
-              <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-xs font-medium w-fit">Tú</div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.sender === 'stranger' ? (
-                    <div className="max-w-xs">
-                      <div className="text-xs font-bold text-gray-300 mb-1 ml-2">EXTRAÑO</div>
-                      <div className="bg-white text-gray-900 px-4 py-3 rounded-3xl shadow-lg drop-shadow-lg">{msg.text}</div>
-                    </div>
-                  ) : (
-                    <div className="max-w-xs">
-                      <div className="text-xs font-bold text-blue-300 mb-1 mr-2 text-right">TÚ</div>
-                      <div className="bg-blue-500 text-white px-4 py-3 rounded-3xl shadow-lg drop-shadow-lg">{msg.text}</div>
-                    </div>
-                  )}
-                </div>
-              ))}
+          {/* Messages overlay on remote video when keyboard is open */}
+          {keyboardOpen && messages.length > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 max-h-40 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-8 pb-2 space-y-2">
+              {messagesList}
               <div ref={messagesEndRef} />
             </div>
+          )}
+        </div>
 
-            <div className="px-4 py-3 flex gap-2 items-end">
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
-                disabled={searching}
-                className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg drop-shadow-md disabled:opacity-50"
-              />
-              <button
-                onClick={handleSendMessage}
-                className="bg-blue-500 hover:bg-blue-600 text-white rounded-full p-3 flex items-center justify-center shadow-lg drop-shadow-lg transition-colors"
-              >
-                <Send size={20} />
-              </button>
-            </div>
-
-            <div className="px-4 py-3 flex gap-3">
-              <button
-                onClick={handleNext}
-                className="bg-red-500 hover:bg-red-600 rounded-2xl p-3 flex items-center justify-center shadow-lg drop-shadow-lg transition-colors"
-              >
-                <Square size={24} className="text-white fill-white" />
-              </button>
-              <button
-                onClick={handleNext}
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-3 font-bold text-center shadow-lg drop-shadow-lg transition-colors"
-              >
-                Siguiente
-              </button>
+        {/* Local Video with chat — hidden when keyboard is open */}
+        {!keyboardOpen && (
+          <div className="relative h-1/2 overflow-hidden shrink-0">
+            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col">
+              <div className="px-6 pt-4">
+                <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-xs font-medium w-fit">Tú</div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                {messagesList}
+                <div ref={messagesEndRef} />
+              </div>
+              {chatInput}
+              {actionButtons}
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Input + buttons shown below remote video when keyboard is open */}
+        {keyboardOpen && (
+          <div className="bg-gray-900 shrink-0">
+            {chatInput}
+            {actionButtons}
+          </div>
+        )}
       </div>
     </div>
   );
