@@ -573,7 +573,7 @@ export default function VideoChatApp() {
   ));
 
   const chatInput = (
-    <div className="px-4 py-3 flex gap-2 items-end">
+    <div className="px-4 pt-2 pb-1 flex gap-2 items-end">
       <input
         type="text"
         value={inputValue}
@@ -582,7 +582,7 @@ export default function VideoChatApp() {
         placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
         disabled={searching}
         onFocus={() => setInputFocused(true)}
-        onBlur={() => setInputFocused(false)}
+        onBlur={() => setTimeout(() => setInputFocused(false), 100)}
         className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg disabled:opacity-50"
       />
       <button
@@ -623,7 +623,7 @@ export default function VideoChatApp() {
         {/* Status bar */}
         <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400 shrink-0">{status}</div>
 
-        {/* Remote Video — expands to fill all space when keyboard is open */}
+        {/* Remote Video — always in DOM, expands when local is hidden */}
         <div className="flex-1 relative overflow-hidden bg-black min-h-0">
           <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
           <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
@@ -635,40 +635,33 @@ export default function VideoChatApp() {
               </div>
             </div>
           )}
-          {/* Messages overlay on remote video when keyboard is open */}
+          {/* Messages overlay on remote video when typing */}
           {inputFocused && messages.length > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 max-h-40 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-8 pb-2 space-y-2">
+            <div className="absolute bottom-0 left-0 right-0 max-h-40 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-8 pb-2 space-y-2 pointer-events-none">
               {messagesList}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
-        {/* Local Video with chat — hidden when keyboard is open */}
-        {!inputFocused && (
-          <div className="relative h-1/2 overflow-hidden shrink-0">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col">
-              <div className="px-6 pt-4">
-                <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-xs font-medium w-fit">Tú</div>
-              </div>
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-                {messagesList}
-                <div ref={messagesEndRef} />
-              </div>
-              {chatInput}
-              {actionButtons}
+        {/* Local Video — always in DOM so srcObject is preserved; hidden via CSS when typing */}
+        <div className={`relative overflow-hidden shrink-0 transition-all duration-200 ${inputFocused ? 'h-0' : 'h-1/2'}`}>
+          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col">
+            <div className="px-6 pt-4">
+              <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-xs font-medium w-fit">Tú</div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {messagesList}
+              <div ref={messagesEndRef} />
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Input + buttons shown below remote video when keyboard is open */}
-        {inputFocused && (
-          <div className="bg-gray-900 shrink-0">
-            {chatInput}
-            {actionButtons}
-          </div>
-        )}
+        {/* Input + buttons — always at the bottom */}
+        <div className="bg-gray-900 shrink-0">
+          {chatInput}
+          {actionButtons}
+        </div>
       </div>
     </div>
   );
