@@ -63,6 +63,21 @@ export default function VideoChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Keep --app-h in sync with the visual viewport (accounts for mobile keyboard)
+  useEffect(() => {
+    const update = () => {
+      const h = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--app-h', `${h}px`);
+    };
+    update();
+    window.visualViewport?.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
   const handleSendMessage = () => {
     const text = inputValue.trim();
     if (!text) return;
@@ -539,8 +554,8 @@ export default function VideoChatApp() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
-      <div className="w-full max-w-md bg-gray-900 rounded-3xl overflow-hidden shadow-2xl flex flex-col h-screen max-h-screen">
+    <div className="flex justify-center bg-gray-900 overflow-hidden" style={{ height: 'var(--app-h, 100dvh)' }}>
+      <div className="w-full max-w-md bg-gray-900 flex flex-col overflow-hidden h-full">
         {/* Top Status Bar */}
         <div className="bg-black/40 backdrop-blur-md px-6 py-3 flex justify-between items-center relative z-40">
           <div className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-medium">
