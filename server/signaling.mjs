@@ -114,13 +114,14 @@ wss.on('connection', (ws) => {
     }
   })
 
-  const disconnect = () => {
+  ws.on('close', () => {
     leaveRoom(ws)
     removeFromQueue(ws)
-  }
+  })
 
-  ws.on('close', disconnect)
-  ws.on('error', disconnect)
+  ws.on('error', () => {
+    try { ws.terminate() } catch {}
+  })
 })
 
 server.listen(PORT, () => {

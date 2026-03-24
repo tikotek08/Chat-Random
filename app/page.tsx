@@ -206,7 +206,9 @@ export default function VideoChatApp() {
         const st = pc.connectionState;
         if (st === 'connected') { setSearching(false); setStatus('Conectado'); }
         if (st === 'connecting') setStatus('Conectando video...');
-        if (st === 'failed' || st === 'disconnected') {
+        if (st === 'disconnected') setStatus('Conexión interrumpida, esperando...');
+        // Only act on 'failed' — 'disconnected' is temporary and can recover on its own
+        if (st === 'failed') {
           cleanupPc();
           setSearching(true);
           setRoomId('');
@@ -241,9 +243,14 @@ export default function VideoChatApp() {
         setSearching(true);
         setRoomId('');
         setMessages([]);
-        setStatus('Buscando a alguien...');
+        setStatus('El extraño se fue, buscando otro...');
         if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'find-match' }));
+          // Small delay so the user sees the state change
+          setTimeout(() => {
+            if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({ type: 'find-match' }));
+            }
+          }, 1500);
         }
         return;
       }
