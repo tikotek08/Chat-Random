@@ -57,6 +57,7 @@ export default function VideoChatApp() {
   const reconnectTimerRef = useRef<number | null>(null);
 
   const politeRef = useRef(false);
+  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -104,6 +105,7 @@ export default function VideoChatApp() {
 
     const cleanupPc = () => {
       politeRef.current = false;
+      iceCandidateQueueRef.current = [];
       setDcReady(false);
 
       if (pcRef.current) {
@@ -260,8 +262,12 @@ export default function VideoChatApp() {
       if (!pc) return;
 
       if (msg.type === 'offer') {
-        // Only the polite peer receives offers (impolite peer only sends them)
         await pc.setRemoteDescription(msg.sdp);
+        // Flush candidates that arrived before the offer
+        for (const c of iceCandidateQueueRef.current) {
+          try { await pc.addIceCandidate(c); } catch {}
+        }
+        iceCandidateQueueRef.current = [];
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription! }));
@@ -270,11 +276,21 @@ export default function VideoChatApp() {
 
       if (msg.type === 'answer') {
         await pc.setRemoteDescription(msg.sdp);
+        // Flush candidates that arrived before the answer
+        for (const c of iceCandidateQueueRef.current) {
+          try { await pc.addIceCandidate(c); } catch {}
+        }
+        iceCandidateQueueRef.current = [];
         return;
       }
 
       if (msg.type === 'ice-candidate') {
-        try { await pc.addIceCandidate(msg.candidate); } catch {}
+        // Buffer if remote description not set yet — dropping candidates = ICE failure
+        if (!pc.remoteDescription) {
+          iceCandidateQueueRef.current.push(msg.candidate);
+        } else {
+          try { await pc.addIceCandidate(msg.candidate); } catch {}
+        }
       }
     };
 
