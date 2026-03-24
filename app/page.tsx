@@ -63,18 +63,19 @@ export default function VideoChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Keep --app-h in sync with the visual viewport (accounts for mobile keyboard)
+  // Keep --app-h / --app-top in sync with the visual viewport (mobile keyboard)
   useEffect(() => {
     const update = () => {
-      const h = window.visualViewport?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty('--app-h', `${h}px`);
+      const vv = window.visualViewport;
+      document.documentElement.style.setProperty('--app-h', `${vv?.height ?? window.innerHeight}px`);
+      document.documentElement.style.setProperty('--app-top', `${vv?.offsetTop ?? 0}px`);
     };
     update();
     window.visualViewport?.addEventListener('resize', update);
-    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
     return () => {
       window.visualViewport?.removeEventListener('resize', update);
-      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
     };
   }, []);
 
@@ -554,7 +555,7 @@ export default function VideoChatApp() {
   };
 
   return (
-    <div className="flex justify-center bg-gray-900 overflow-hidden" style={{ height: 'var(--app-h, 100dvh)' }}>
+    <div className="fixed left-0 right-0 flex justify-center bg-gray-900 overflow-hidden" style={{ top: 'var(--app-top, 0px)', height: 'var(--app-h, 100dvh)' }}>
       <div className="w-full max-w-md bg-gray-900 flex flex-col overflow-hidden h-full">
         {/* Top Status Bar */}
         <div className="bg-black/40 backdrop-blur-md px-6 py-3 flex justify-between items-center relative z-40">
