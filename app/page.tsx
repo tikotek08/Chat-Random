@@ -63,16 +63,14 @@ export default function VideoChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
 
   // Keep --app-h / --app-top in sync with the visual viewport (mobile keyboard)
   useEffect(() => {
     const update = () => {
       const vv = window.visualViewport;
-      const h = vv?.height ?? window.innerHeight;
-      document.documentElement.style.setProperty('--app-h', `${h}px`);
+      document.documentElement.style.setProperty('--app-h', `${vv?.height ?? window.innerHeight}px`);
       document.documentElement.style.setProperty('--app-top', `${vv?.offsetTop ?? 0}px`);
-      setKeyboardOpen(h < window.screen.height * 0.75);
     };
     update();
     window.visualViewport?.addEventListener('resize', update);
@@ -583,6 +581,8 @@ export default function VideoChatApp() {
         onKeyPress={handleKeyPress}
         placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
         disabled={searching}
+        onFocus={() => setInputFocused(true)}
+        onBlur={() => setInputFocused(false)}
         className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg disabled:opacity-50"
       />
       <button
@@ -636,7 +636,7 @@ export default function VideoChatApp() {
             </div>
           )}
           {/* Messages overlay on remote video when keyboard is open */}
-          {keyboardOpen && messages.length > 0 && (
+          {inputFocused && messages.length > 0 && (
             <div className="absolute bottom-0 left-0 right-0 max-h-40 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-8 pb-2 space-y-2">
               {messagesList}
               <div ref={messagesEndRef} />
@@ -645,7 +645,7 @@ export default function VideoChatApp() {
         </div>
 
         {/* Local Video with chat — hidden when keyboard is open */}
-        {!keyboardOpen && (
+        {!inputFocused && (
           <div className="relative h-1/2 overflow-hidden shrink-0">
             <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col">
@@ -663,7 +663,7 @@ export default function VideoChatApp() {
         )}
 
         {/* Input + buttons shown below remote video when keyboard is open */}
-        {keyboardOpen && (
+        {inputFocused && (
           <div className="bg-gray-900 shrink-0">
             {chatInput}
             {actionButtons}
