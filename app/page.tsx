@@ -55,8 +55,6 @@ export default function VideoChatApp() {
   const pendingChatRef = useRef<string[]>([]);
   const reconnectTimerRef = useRef<number | null>(null);
 
-  const makingOfferRef = useRef(false);
-  const ignoreOfferRef = useRef(false);
   const politeRef = useRef(false);
 
   useEffect(() => {
@@ -104,8 +102,6 @@ export default function VideoChatApp() {
     };
 
     const cleanupPc = () => {
-      makingOfferRef.current = false;
-      ignoreOfferRef.current = false;
       politeRef.current = false;
 
       if (pcRef.current) {
@@ -191,16 +187,16 @@ export default function VideoChatApp() {
 
       const makeOffer = async () => {
         try {
-          makingOfferRef.current = true;
           const offer = await pc.createOffer();
-          if (pc.signalingState !== 'stable') return;
           await pc.setLocalDescription(offer);
           wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription! }));
         } catch (e) { console.error(e); }
-        finally { makingOfferRef.current = false; }
       };
 
-      pc.onnegotiationneeded = async () => await makeOffer();
+      // Only the impolite peer (polite=false) initiates — eliminates offer collisions
+      pc.onnegotiationneeded = async () => {
+        if (!politeRef.current) await makeOffer();
+      };
 
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
@@ -259,9 +255,7 @@ export default function VideoChatApp() {
       if (!pc) return;
 
       if (msg.type === 'offer') {
-        const offerCollision = makingOfferRef.current || pc.signalingState !== 'stable';
-        ignoreOfferRef.current = !politeRef.current && offerCollision;
-        if (ignoreOfferRef.current) return;
+        // Only the polite peer receives offers (impolite peer only sends them)
         await pc.setRemoteDescription(msg.sdp);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -275,8 +269,7 @@ export default function VideoChatApp() {
       }
 
       if (msg.type === 'ice-candidate') {
-        try { await pc.addIceCandidate(msg.candidate); }
-        catch (err) { if (!ignoreOfferRef.current) throw err; }
+        try { await pc.addIceCandidate(msg.candidate); } catch {}
       }
     };
 
@@ -335,8 +328,6 @@ export default function VideoChatApp() {
   }, []);
 
   const handleNext = () => {
-    makingOfferRef.current = false;
-    ignoreOfferRef.current = false;
     politeRef.current = false;
     if (pcRef.current) { try { pcRef.current.close(); } catch {} pcRef.current = null; }
     if (dataChannelRef.current) { try { dataChannelRef.current.close(); } catch {} dataChannelRef.current = null; }
