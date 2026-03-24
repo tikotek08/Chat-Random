@@ -20,7 +20,21 @@ type SignalMessage =
   | { type: 'leave' };
 
 const rtcConfig: RTCConfiguration = {
-  iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+  ],
 };
 
 export default function VideoChatApp() {
@@ -28,6 +42,7 @@ export default function VideoChatApp() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [searching, setSearching] = useState(true);
+  const [status, setStatus] = useState('Conectando al servidor...');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -161,7 +176,11 @@ export default function VideoChatApp() {
       };
 
       pc.ondatachannel = (event) => attachDataChannel(event.channel);
-      try { attachDataChannel(pc.createDataChannel('chat')); } catch {}
+      // Only the impolite peer (offerer) creates the data channel.
+      // If both sides create one they close each other's channel.
+      if (!polite) {
+        try { attachDataChannel(pc.createDataChannel('chat')); } catch {}
+      }
 
       pc.onicecandidate = (event) => {
         if (!event.candidate) return;
@@ -185,11 +204,13 @@ export default function VideoChatApp() {
 
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
-        if (st === 'connected') setSearching(false);
+        if (st === 'connected') { setSearching(false); setStatus('Conectado'); }
+        if (st === 'connecting') setStatus('Conectando video...');
         if (st === 'failed' || st === 'disconnected') {
           cleanupPc();
           setSearching(true);
           setRoomId('');
+          setStatus('Buscando a alguien...');
           if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'find-match' }));
           }
@@ -200,6 +221,7 @@ export default function VideoChatApp() {
     const handleSignal = async (msg: SignalMessage) => {
       if (msg.type === 'waiting') {
         setSearching(true);
+        setStatus('Buscando a alguien...');
         setRoomId('');
         setMessages([]);
         cleanupPc();
@@ -208,6 +230,7 @@ export default function VideoChatApp() {
 
       if (msg.type === 'matched') {
         setRoomId(msg.roomId);
+        setStatus('Conectando video...');
         setMessages([]);
         setupPc(msg.polite);
         return;
@@ -218,6 +241,7 @@ export default function VideoChatApp() {
         setSearching(true);
         setRoomId('');
         setMessages([]);
+        setStatus('Buscando a alguien...');
         if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'find-match' }));
         }
@@ -267,15 +291,20 @@ export default function VideoChatApp() {
         const ws = new WebSocket(getSignalingUrl());
         wsRef.current = ws;
 
-        ws.onopen = () => ws.send(JSON.stringify({ type: 'find-match' }));
+        ws.onopen = () => {
+          setStatus('Buscando a alguien...');
+          ws.send(JSON.stringify({ type: 'find-match' }));
+        };
+        ws.onerror = () => setStatus('Error: no se pudo conectar al servidor de señalización');
         ws.onmessage = async (event) => {
           try {
             const data = JSON.parse(String(event.data)) as SignalMessage;
             await handleSignal(data);
           } catch (e) { console.error(e); }
         };
-        ws.onerror = () => { try { ws.close(); } catch {} };
-        ws.onclose = () => { if (!stopped) scheduleReconnect(attempt); };
+        ws.onclose = () => {
+          if (!stopped) { setStatus('Reconectando...'); scheduleReconnect(attempt); }
+        };
       } catch (e) {
         console.error(e);
         scheduleReconnect(attempt);
@@ -327,6 +356,9 @@ export default function VideoChatApp() {
             <span>💎 12</span>
           </div>
         </div>
+
+        {/* Status bar */}
+        <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400">{status}</div>
 
         {/* Remote Video */}
         <div className="flex-1 relative overflow-hidden bg-gradient-to-b from-blue-100 to-gray-100">
