@@ -4,7 +4,36 @@ import { WebSocketServer } from 'ws'
 
 const PORT = Number(process.env.SIGNALING_PORT ?? process.env.PORT ?? 3001)
 
+const TURN_SERVERS = (process.env.TURN_URLS ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+
+const TURN_USERNAME = process.env.TURN_USERNAME ?? ''
+const TURN_CREDENTIAL = process.env.TURN_CREDENTIAL ?? ''
+
 const server = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
+  if (req.url === '/ice-config') {
+    const iceServers = [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    ]
+    if (TURN_SERVERS.length > 0 && TURN_USERNAME && TURN_CREDENTIAL) {
+      iceServers.push({ urls: TURN_SERVERS, username: TURN_USERNAME, credential: TURN_CREDENTIAL })
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ iceServers }))
+    return
+  }
+
   res.writeHead(200, { 'content-type': 'text/plain' })
   res.end('OK\n')
 })

@@ -19,21 +19,9 @@ type SignalMessage =
   | { type: 'ice-candidate'; candidate: RTCIceCandidateInit }
   | { type: 'leave' };
 
-const rtcConfig: RTCConfiguration = {
+const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
   ],
 };
 
@@ -60,6 +48,7 @@ export default function VideoChatApp() {
 
   const politeRef = useRef(false);
   const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  const rtcConfigRef = useRef<RTCConfiguration>(DEFAULT_RTC_CONFIG);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -94,6 +83,20 @@ export default function VideoChatApp() {
       const host = window.location.hostname || 'localhost';
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       return `${protocol}://${host}:3001`;
+    };
+
+    const fetchIceConfig = async () => {
+      try {
+        const signalingBase = getSignalingUrl().replace(/^ws/, 'http');
+        const res = await fetch(`${signalingBase}/ice-config`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.iceServers) {
+            rtcConfigRef.current = { iceServers: data.iceServers };
+            log(`ICE config: ${data.iceServers.length} servidor(es)`);
+          }
+        }
+      } catch { /* use default */ }
     };
 
     const ensureLocalMedia = async () => {
@@ -169,7 +172,7 @@ export default function VideoChatApp() {
       const stream = localStreamRef.current;
       if (!stream) return;
 
-      const pc = new RTCPeerConnection(rtcConfig);
+      const pc = new RTCPeerConnection(rtcConfigRef.current);
       pcRef.current = pc;
 
       for (const track of stream.getTracks()) pc.addTrack(track, stream);
@@ -322,6 +325,8 @@ export default function VideoChatApp() {
       try {
         const stream = await ensureLocalMedia();
         if (!stream) return;
+
+        if (attempt === 0) await fetchIceConfig();
 
         const ws = new WebSocket(getSignalingUrl());
         wsRef.current = ws;
