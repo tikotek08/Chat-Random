@@ -189,11 +189,15 @@ export default function VideoChatApp() {
       }
 
       pc.onicecandidate = (event) => {
-        if (!event.candidate) return;
+        if (!event.candidate) { log('ICE gathering completo'); return; }
+        const c = event.candidate;
+        log(`ICE out: ${c.type} ${c.protocol}`);
         try {
-          wsRef.current?.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate.toJSON() }));
+          wsRef.current?.send(JSON.stringify({ type: 'ice-candidate', candidate: c.toJSON() }));
         } catch {}
       };
+
+      pc.oniceconnectionstatechange = () => log(`ICE: ${pc.iceConnectionState}`);
 
       // Disable onnegotiationneeded — we make the offer explicitly below
       pc.onnegotiationneeded = () => {};
@@ -293,10 +297,12 @@ export default function VideoChatApp() {
       }
 
       if (msg.type === 'ice-candidate') {
-        // Buffer if remote description not set yet — dropping candidates = ICE failure
+        const typ = (msg.candidate as RTCIceCandidateInit).candidate?.split(' ')[7] ?? '?';
         if (!pc.remoteDescription) {
+          log(`ICE in (buffered): ${typ}`);
           iceCandidateQueueRef.current.push(msg.candidate);
         } else {
+          log(`ICE in: ${typ}`);
           try { await pc.addIceCandidate(msg.candidate); } catch {}
         }
       }
