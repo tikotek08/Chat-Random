@@ -43,6 +43,7 @@ export default function VideoChatApp() {
   const [inputValue, setInputValue] = useState('');
   const [searching, setSearching] = useState(true);
   const [status, setStatus] = useState('Conectando al servidor...');
+  const [dcReady, setDcReady] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -103,6 +104,7 @@ export default function VideoChatApp() {
 
     const cleanupPc = () => {
       politeRef.current = false;
+      setDcReady(false);
 
       if (pcRef.current) {
         try {
@@ -136,6 +138,7 @@ export default function VideoChatApp() {
       }
       dataChannelRef.current = dc;
       dc.onopen = () => {
+        setDcReady(true);
         const queued = pendingChatRef.current.splice(0);
         for (const text of queued) {
           try { dc.send(text); } catch { pendingChatRef.current.unshift(text); break; }
@@ -151,6 +154,7 @@ export default function VideoChatApp() {
       };
       dc.onclose = () => {
         if (dataChannelRef.current === dc) dataChannelRef.current = null;
+        setDcReady(false);
       };
     };
 
@@ -167,8 +171,13 @@ export default function VideoChatApp() {
       for (const track of stream.getTracks()) pc.addTrack(track, stream);
 
       pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream;
+        if (!remoteVideoRef.current) return;
+        // event.streams can be empty on some browsers — use addTrack instead
+        if (!(remoteVideoRef.current.srcObject instanceof MediaStream)) {
+          remoteVideoRef.current.srcObject = new MediaStream();
+        }
+        (remoteVideoRef.current.srcObject as MediaStream).addTrack(event.track);
+        remoteVideoRef.current.play().catch(() => {});
       };
 
       pc.ondatachannel = (event) => attachDataChannel(event.channel);
@@ -404,8 +413,9 @@ export default function VideoChatApp() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Escribe un mensaje..."
-                className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg drop-shadow-md"
+                placeholder={dcReady ? 'Escribe un mensaje...' : 'Esperando chat...'}
+                disabled={!dcReady}
+                className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg drop-shadow-md disabled:opacity-50"
               />
               <button
                 onClick={handleSendMessage}
