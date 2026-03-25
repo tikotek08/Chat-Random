@@ -55,9 +55,9 @@ export default function VideoChatApp() {
   const relayIntervalRef = useRef<number | null>(null);
   const lastFrameUrlRef = useRef<string | null>(null);
   const audioRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioSourceBufferRef = useRef<SourceBuffer | null>(null);
-  const audioQueueRef = useRef<ArrayBuffer[]>([]);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioHandlerRef = useRef<((payload: ArrayBuffer) => void) | null>(null);
+  const audioNextTimeRef = useRef(0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -200,13 +200,7 @@ export default function VideoChatApp() {
         try { audioRecorderRef.current.stop(); } catch {}
         audioRecorderRef.current = null;
       }
-      if (remoteAudioRef.current) {
-        try { remoteAudioRef.current.pause(); } catch {}
-        remoteAudioRef.current.src = '';
-        remoteAudioRef.current = null;
-      }
-      audioSourceBufferRef.current = null;
-      audioQueueRef.current = [];
+      audioHandlerRef.current = null;
     };
 
     const startRelayCapture = () => {
@@ -232,45 +226,58 @@ export default function VideoChatApp() {
         }, 'image/jpeg', 0.65);
       }, 100); // 10 fps
 
-      // ── Audio: MediaRecorder → WebM/Opus → WebSocket (type byte 1) ──
+      // ── Audio: MediaRecorder → Web Audio API (works on iOS + Android) ──
       const stream = localStreamRef.current;
       if (!stream || !stream.getAudioTracks().length) return;
-      const mimeType = 'audio/webm;codecs=opus';
-      if (!MediaSource.isTypeSupported(mimeType)) { log('Audio relay: formato no soportado'); return; }
 
-      // Playback side: MediaSource feeds an <audio> element
-      const ms = new MediaSource();
-      const audio = new Audio();
-      remoteAudioRef.current = audio;
-      audio.src = URL.createObjectURL(ms);
-      ms.addEventListener('sourceopen', () => {
+      // Pick best supported codec: opus/webm (Chrome/Android) → mp4 (iOS Safari)
+      const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
+        .find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } });
+      if (!mimeType) return;
+
+      // Ensure AudioContext exists and is running (iOS needs user-gesture unlock)
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      ctx.resume().catch(() => {});
+      audioNextTimeRef.current = ctx.currentTime;
+
+      // Playback handler: decode each self-contained chunk via Web Audio API
+      audioHandlerRef.current = async (payload: ArrayBuffer) => {
         try {
-          const sb = ms.addSourceBuffer(mimeType);
-          audioSourceBufferRef.current = sb;
-          const flush = () => {
-            if (!sb.updating && audioQueueRef.current.length > 0) {
-              try { sb.appendBuffer(audioQueueRef.current.shift()!); } catch {}
-            }
-          };
-          sb.addEventListener('updateend', flush);
-          flush();
-        } catch (e) { log(`Audio MediaSource error: ${e}`); }
-      });
-      audio.play().catch(() => {});
+          await ctx.resume();
+          const buf = await ctx.decodeAudioData(payload.slice(0));
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          const now = ctx.currentTime;
+          if (audioNextTimeRef.current < now + 0.05) audioNextTimeRef.current = now + 0.05;
+          src.start(audioNextTimeRef.current);
+          audioNextTimeRef.current += buf.duration;
+        } catch { /* decode error — skip chunk */ }
+      };
 
-      // Capture side: MediaRecorder sends chunks with type prefix 1
+      // Capture: prepend init segment to every chunk so each is independently decodable
       const audioStream = new MediaStream(stream.getAudioTracks());
       const recorder = new MediaRecorder(audioStream, { mimeType });
       audioRecorderRef.current = recorder;
+      let initSeg: Uint8Array | null = null;
       recorder.ondataavailable = async (e) => {
-        if (e.data.size === 0 || wsRef.current?.readyState !== WebSocket.OPEN) return;
-        const buf = await e.data.arrayBuffer();
-        const msg = new Uint8Array(1 + buf.byteLength);
-        msg[0] = 1; // audio
-        msg.set(new Uint8Array(buf), 1);
+        if (e.data.size === 0) return;
+        const chunk = new Uint8Array(await e.data.arrayBuffer());
+        if (!initSeg) { initSeg = chunk; return; } // first chunk = codec headers only
+        // Combine init + data → self-contained decodable packet
+        const combined = new Uint8Array(initSeg.byteLength + chunk.byteLength);
+        combined.set(initSeg, 0);
+        combined.set(chunk, initSeg.byteLength);
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+        const msg = new Uint8Array(1 + combined.byteLength);
+        msg[0] = 1; // audio type
+        msg.set(combined, 1);
         wsRef.current.send(msg.buffer);
       };
-      recorder.start(200); // 200 ms chunks
+      recorder.start(500); // 500 ms — larger chunks decode more reliably
     };
 
     const activateRelay = () => {
@@ -493,13 +500,7 @@ export default function VideoChatApp() {
                 lastFrameUrlRef.current = url;
                 if (remoteImgRef.current) remoteImgRef.current.src = url;
               } else if (type === 1) {
-                // Audio WebM chunk
-                const sb = audioSourceBufferRef.current;
-                if (sb && !sb.updating) {
-                  try { sb.appendBuffer(payload); } catch {}
-                } else {
-                  audioQueueRef.current.push(payload);
-                }
+                audioHandlerRef.current?.(payload);
               }
               return;
             }
@@ -516,10 +517,22 @@ export default function VideoChatApp() {
       }
     };
 
+    // Unlock AudioContext on first gesture so iOS allows audio playback
+    const unlockAudio = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      audioCtxRef.current.resume().catch(() => {});
+    };
+    document.addEventListener('touchstart', unlockAudio, { once: true });
+    document.addEventListener('click', unlockAudio, { once: true });
+
     connect().catch(console.error);
 
     return () => {
       stopped = true;
+      document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('click', unlockAudio);
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
       stopRelayCapture();
       if (lastFrameUrlRef.current) { URL.revokeObjectURL(lastFrameUrlRef.current); lastFrameUrlRef.current = null; }
@@ -543,8 +556,7 @@ export default function VideoChatApp() {
     if (lastFrameUrlRef.current) { URL.revokeObjectURL(lastFrameUrlRef.current); lastFrameUrlRef.current = null; }
     if (remoteImgRef.current) remoteImgRef.current.src = '';
     if (audioRecorderRef.current) { try { audioRecorderRef.current.stop(); } catch {} audioRecorderRef.current = null; }
-    if (remoteAudioRef.current) { try { remoteAudioRef.current.pause(); } catch {} remoteAudioRef.current.src = ''; remoteAudioRef.current = null; }
-    audioSourceBufferRef.current = null; audioQueueRef.current = [];
+    audioHandlerRef.current = null;
     setRelayMode(false);
     setSearching(true);
     setMessages([]);
