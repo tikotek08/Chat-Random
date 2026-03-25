@@ -623,7 +623,7 @@ export default function VideoChatApp() {
         {/* Status bar */}
         <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400 shrink-0">{status}</div>
 
-        {/* Remote Video — always in DOM, expands when local is hidden */}
+        {/* Remote Video — priority, fills all remaining space, no obstructions */}
         <div className="flex-1 relative overflow-hidden bg-black min-h-0">
           <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
           <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
@@ -635,30 +635,26 @@ export default function VideoChatApp() {
               </div>
             </div>
           )}
-          {/* Messages overlay on remote video when typing */}
-          {inputFocused && messages.length > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 max-h-40 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-8 pb-2 space-y-2 pointer-events-none">
-              {messagesList}
-            </div>
-          )}
         </div>
 
-        {/* Local Video — always in DOM so srcObject is preserved; hidden via CSS when typing */}
-        <div className={`relative overflow-hidden shrink-0 transition-all duration-200 ${inputFocused ? 'h-0' : 'h-1/2'}`}>
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col">
-            <div className="px-6 pt-4">
-              <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-xs font-medium w-fit">Tú</div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-              {messagesList}
-              <div ref={messagesEndRef} />
+        {/* Bottom section — dedicated space, never overlaps remote video */}
+        <div className="shrink-0 bg-gray-950 flex flex-col">
+
+          {/* Local video — small fixed-height strip */}
+          <div className={`relative overflow-hidden transition-all duration-200 ${inputFocused ? 'h-0' : 'h-36'}`}>
+            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <div className="absolute top-2 left-3">
+              <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Tú</span>
             </div>
           </div>
-        </div>
 
-        {/* Input + buttons — always at the bottom */}
-        <div className="bg-gray-900 shrink-0">
+          {/* Chat messages */}
+          <div className="overflow-y-auto px-4 py-2 space-y-2" style={{ maxHeight: '120px' }}>
+            {messagesList}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input + buttons */}
           {chatInput}
           {actionButtons}
         </div>
