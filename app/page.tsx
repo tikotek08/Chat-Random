@@ -239,22 +239,22 @@ export default function VideoChatApp() {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
-      const ctx = audioCtxRef.current;
-      ctx.resume().catch(() => {});
-      audioNextTimeRef.current = ctx.currentTime;
+      const audioCtx = audioCtxRef.current;
+      audioCtx.resume().catch(() => {});
+      audioNextTimeRef.current = audioCtx.currentTime;
 
       // Playback handler: decode each self-contained chunk via Web Audio API
       audioHandlerRef.current = async (payload: ArrayBuffer) => {
         try {
-          await ctx.resume();
-          const buf = await ctx.decodeAudioData(payload.slice(0));
-          const src = ctx.createBufferSource();
-          src.buffer = buf;
-          src.connect(ctx.destination);
-          const now = ctx.currentTime;
+          await audioCtx.resume();
+          const audioBuf = await audioCtx.decodeAudioData(payload.slice(0));
+          const src = audioCtx.createBufferSource();
+          src.buffer = audioBuf;
+          src.connect(audioCtx.destination);
+          const now = audioCtx.currentTime;
           if (audioNextTimeRef.current < now + 0.05) audioNextTimeRef.current = now + 0.05;
           src.start(audioNextTimeRef.current);
-          audioNextTimeRef.current += buf.duration;
+          audioNextTimeRef.current += audioBuf.duration;
         } catch { /* decode error — skip chunk */ }
       };
 
