@@ -252,6 +252,8 @@ export default function VideoChatApp() {
           src.buffer = audioBuf;
           src.connect(audioCtx.destination);
           const now = audioCtx.currentTime;
+          // Reset if scheduler drifted more than 250ms ahead (prevents accumulating delay)
+          if (audioNextTimeRef.current > now + 0.25) audioNextTimeRef.current = now + 0.05;
           if (audioNextTimeRef.current < now + 0.05) audioNextTimeRef.current = now + 0.05;
           src.start(audioNextTimeRef.current);
           audioNextTimeRef.current += audioBuf.duration;
@@ -277,7 +279,7 @@ export default function VideoChatApp() {
         msg.set(combined, 1);
         wsRef.current.send(msg.buffer);
       };
-      recorder.start(500); // 500 ms — larger chunks decode more reliably
+      recorder.start(150); // 150 ms — low latency while still decodable
     };
 
     const activateRelay = () => {
