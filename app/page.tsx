@@ -633,8 +633,8 @@ className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placehol
 
         {/* Remote Video — 50% */}
         <div className="flex-1 relative overflow-hidden bg-black">
-          <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover scale-x-[-1] ${relayMode ? 'hidden' : ''}`} />
-          <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover scale-x-[-1] ${relayMode ? '' : 'hidden'}`} />
+          <video ref={remoteVideoRef} autoPlay playsInline style={{ transform: 'scaleX(-1)' }} className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
+          <img ref={remoteImgRef} alt="" style={{ transform: 'scaleX(-1)' }} className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
           {searching && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/70">
               <div className="text-white text-center space-y-2">
