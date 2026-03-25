@@ -640,24 +640,31 @@ export default function VideoChatApp() {
           </div>
         </div>
 
-        {/* Local Video — 50%, always in DOM */}
+        {/* Local Video — 50%, always in DOM, input overlaid with 40% opacity */}
         <div className={`flex-1 relative overflow-hidden bg-black transition-all duration-200 ${inputFocused ? 'hidden' : ''}`}>
           <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
           <div className="absolute top-2 left-3">
             <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Tú</span>
           </div>
           {/* Chat messages overlay */}
-          <div className="absolute bottom-0 left-0 right-0 max-h-32 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-6 pb-2 space-y-2 pointer-events-none">
+          <div className="absolute bottom-24 left-0 right-0 max-h-28 overflow-y-auto px-4 space-y-2 pointer-events-none">
             {messagesList}
             <div ref={messagesEndRef} />
           </div>
+          {/* Input + buttons overlaid at bottom with 40% opacity */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gray-900/40 backdrop-blur-sm">
+            {chatInput}
+            {actionButtons}
+          </div>
         </div>
 
-        {/* Input + buttons */}
-        <div className="bg-gray-900 shrink-0">
-          {chatInput}
-          {actionButtons}
-        </div>
+        {/* Input shown separately only when keyboard is open */}
+        {inputFocused && (
+          <div className="bg-gray-900 shrink-0">
+            {chatInput}
+            {actionButtons}
+          </div>
+        )}
       </div>
     </div>
   );
