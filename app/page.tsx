@@ -63,8 +63,6 @@ export default function VideoChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const [inputFocused, setInputFocused] = useState(false);
-
   // Keep --app-h / --app-top in sync with the visual viewport (mobile keyboard)
   useEffect(() => {
     const update = () => {
@@ -581,9 +579,7 @@ export default function VideoChatApp() {
         onKeyPress={handleKeyPress}
         placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
         disabled={searching}
-        onFocus={() => setInputFocused(true)}
-        onBlur={() => setTimeout(() => setInputFocused(false), 100)}
-        className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg disabled:opacity-50"
+className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg disabled:opacity-50"
       />
       <button
         onClick={handleSendMessage}
@@ -640,31 +636,23 @@ export default function VideoChatApp() {
           </div>
         </div>
 
-        {/* Local Video — 50%, always in DOM, input overlaid with 40% opacity */}
-        <div className={`flex-1 relative overflow-hidden bg-black transition-all duration-200 ${inputFocused ? 'hidden' : ''}`}>
+        {/* Local Video — 50%, input overlaid at bottom with 40% opacity */}
+        <div className="flex-1 relative overflow-hidden bg-black">
           <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
           <div className="absolute top-2 left-3">
             <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Tú</span>
           </div>
-          {/* Chat messages overlay */}
+          {/* Chat messages */}
           <div className="absolute bottom-24 left-0 right-0 max-h-28 overflow-y-auto px-4 space-y-2 pointer-events-none">
             {messagesList}
             <div ref={messagesEndRef} />
           </div>
-          {/* Input + buttons overlaid at bottom with 40% opacity */}
+          {/* Input + buttons at bottom, 40% opacity so camera shows through */}
           <div className="absolute bottom-0 left-0 right-0 bg-gray-900/40 backdrop-blur-sm">
             {chatInput}
             {actionButtons}
           </div>
         </div>
-
-        {/* Input shown separately only when keyboard is open */}
-        {inputFocused && (
-          <div className="bg-gray-900 shrink-0">
-            {chatInput}
-            {actionButtons}
-          </div>
-        )}
       </div>
     </div>
   );
