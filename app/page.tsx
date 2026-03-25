@@ -623,8 +623,8 @@ export default function VideoChatApp() {
         {/* Status bar */}
         <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400 shrink-0">{status}</div>
 
-        {/* Remote Video — priority, fills all remaining space, no obstructions */}
-        <div className="flex-1 relative overflow-hidden bg-black min-h-0">
+        {/* Remote Video — 50% */}
+        <div className="flex-1 relative overflow-hidden bg-black">
           <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
           <img ref={remoteImgRef} alt="" className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
           {searching && (
@@ -635,26 +635,26 @@ export default function VideoChatApp() {
               </div>
             </div>
           )}
+          <div className="absolute top-2 left-3">
+            <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Extraño</span>
+          </div>
         </div>
 
-        {/* Bottom section — dedicated space, never overlaps remote video */}
-        <div className="shrink-0 bg-gray-950 flex flex-col">
-
-          {/* Local video — small fixed-height strip */}
-          <div className={`relative overflow-hidden transition-all duration-200 ${inputFocused ? 'h-0' : 'h-36'}`}>
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            <div className="absolute top-2 left-3">
-              <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Tú</span>
-            </div>
+        {/* Local Video — 50%, always in DOM */}
+        <div className={`flex-1 relative overflow-hidden bg-black transition-all duration-200 ${inputFocused ? 'hidden' : ''}`}>
+          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+          <div className="absolute top-2 left-3">
+            <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Tú</span>
           </div>
-
-          {/* Chat messages */}
-          <div className="overflow-y-auto px-4 py-2 space-y-2" style={{ maxHeight: '120px' }}>
+          {/* Chat messages overlay */}
+          <div className="absolute bottom-0 left-0 right-0 max-h-32 overflow-y-auto bg-gradient-to-t from-black/70 to-transparent px-4 pt-6 pb-2 space-y-2 pointer-events-none">
             {messagesList}
             <div ref={messagesEndRef} />
           </div>
+        </div>
 
-          {/* Input + buttons */}
+        {/* Input + buttons */}
+        <div className="bg-gray-900 shrink-0">
           {chatInput}
           {actionButtons}
         </div>
