@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Square } from 'lucide-react';
+import { Send, Square, Diamond } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -27,7 +27,21 @@ const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   ],
 };
 
+const REGIONS = ['Global', 'América Latina', 'Norteamérica', 'Europa', 'Asia', 'Medio Oriente'];
+
 export default function VideoChatApp() {
+  // ── App state ─────────────────────────────────────────────
+  const [appView, setAppView] = useState<'home' | 'chat'>('home');
+  const [chatSessionId, setChatSessionId] = useState(0);
+  const [points, setPoints] = useState(540);
+  const [showNoPointsModal, setShowNoPointsModal] = useState(false);
+  const [showPremiumMenu, setShowPremiumMenu] = useState(false);
+  const [prefGender, setPrefGender] = useState('Todos');
+  const [prefRegion, setPrefRegion] = useState('Global');
+  const [prefAge, setPrefAge] = useState('Todos');
+  const [enteringChat, setEnteringChat] = useState(false);
+
+  // ── Chat state ────────────────────────────────────────────
   const [roomId, setRoomId] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -35,19 +49,18 @@ export default function VideoChatApp() {
   const [status, setStatus] = useState('Conectando al servidor...');
   const [dcReady, setDcReady] = useState(false);
   const [relayMode, setRelayMode] = useState(false);
-  const log = (..._: unknown[]) => {}; // disabled
+  const log = (..._: unknown[]) => {};
 
+  // ── Refs ──────────────────────────────────────────────────
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const pendingChatRef = useRef<string[]>([]);
   const reconnectTimerRef = useRef<number | null>(null);
-
   const politeRef = useRef(false);
   const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const rtcConfigRef = useRef<RTCConfiguration>(DEFAULT_RTC_CONFIG);
@@ -58,12 +71,9 @@ export default function VideoChatApp() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioHandlerRef = useRef<((payload: ArrayBuffer) => void) | null>(null);
   const audioNextTimeRef = useRef(0);
+  const pointsIntervalRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Keep --app-h / --app-top in sync with the visual viewport (mobile keyboard)
+  // ── visualViewport (mobile keyboard) ─────────────────────
   useEffect(() => {
     const update = () => {
       const vv = window.visualViewport;
@@ -79,28 +89,44 @@ export default function VideoChatApp() {
     };
   }, []);
 
-  const handleSendMessage = () => {
-    const text = inputValue.trim();
-    if (!text) return;
-    setMessages((prev) => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
-    // Try DataChannel first (lower latency), fall back to WebSocket relay
-    const dc = dataChannelRef.current;
-    if (dc?.readyState === 'open') {
-      try { dc.send(text); } catch {}
-    } else if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'relay-chat', text }));
-    }
-    setInputValue('');
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
+  // ── Messages scroll ───────────────────────────────────────
   useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // ── Unlock AudioContext on first gesture (iOS) ────────────
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      audioCtxRef.current.resume().catch(() => {});
+    };
+    document.addEventListener('touchstart', unlock, { once: true });
+    document.addEventListener('click', unlock, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlock);
+      document.removeEventListener('click', unlock);
+    };
+  }, []);
+
+  // ── Points ticker (runs only while in chat) ───────────────
+  useEffect(() => {
+    if (appView !== 'chat') return;
+    pointsIntervalRef.current = window.setInterval(() => {
+      setPoints(prev => {
+        if (prev <= 1) { setShowNoPointsModal(true); return 0; }
+        return prev - 1;
+      });
+    }, 60_000);
+    return () => {
+      if (pointsIntervalRef.current) clearInterval(pointsIntervalRef.current);
+    };
+  }, [appView]);
+
+  // ── WebRTC / WebSocket (runs on each chat session) ────────
+  useEffect(() => {
+    if (chatSessionId === 0) return;
     let stopped = false;
 
     const getSignalingUrl = () => {
@@ -117,16 +143,19 @@ export default function VideoChatApp() {
         const res = await fetch(`${signalingBase}/ice-config`);
         if (res.ok) {
           const data = await res.json();
-          if (data?.iceServers) {
-            rtcConfigRef.current = { iceServers: data.iceServers };
-            log(`ICE config: ${data.iceServers.length} servidor(es)`);
-          }
+          if (data?.iceServers) rtcConfigRef.current = { iceServers: data.iceServers };
         }
       } catch { /* use default */ }
     };
 
     const ensureLocalMedia = async () => {
-      if (localStreamRef.current) return localStreamRef.current;
+      if (localStreamRef.current) {
+        // Stream pre-captured by home screen — wire it to the video element
+        if (localVideoRef.current && localVideoRef.current.srcObject !== localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+        }
+        return localStreamRef.current;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       if (stopped) { for (const t of stream.getTracks()) t.stop(); return null; }
       localStreamRef.current = stream;
@@ -138,7 +167,6 @@ export default function VideoChatApp() {
       politeRef.current = false;
       iceCandidateQueueRef.current = [];
       setDcReady(false);
-
       if (pcRef.current) {
         try {
           pcRef.current.onicecandidate = null;
@@ -150,7 +178,6 @@ export default function VideoChatApp() {
         } catch {}
         pcRef.current = null;
       }
-
       if (dataChannelRef.current) {
         try {
           dataChannelRef.current.onmessage = null;
@@ -160,7 +187,6 @@ export default function VideoChatApp() {
         } catch {}
         dataChannelRef.current = null;
       }
-
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     };
 
@@ -180,7 +206,7 @@ export default function VideoChatApp() {
       dc.onmessage = (event) => {
         const text = String(event.data ?? '').trim();
         if (!text) return;
-        setMessages((prev) => [
+        setMessages(prev => [
           ...prev,
           { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, sender: 'stranger', text },
         ]);
@@ -192,21 +218,14 @@ export default function VideoChatApp() {
     };
 
     const stopRelayCapture = () => {
-      if (relayIntervalRef.current !== null) {
-        clearInterval(relayIntervalRef.current);
-        relayIntervalRef.current = null;
-      }
-      if (audioRecorderRef.current) {
-        try { audioRecorderRef.current.stop(); } catch {}
-        audioRecorderRef.current = null;
-      }
+      if (relayIntervalRef.current !== null) { clearInterval(relayIntervalRef.current); relayIntervalRef.current = null; }
+      if (audioRecorderRef.current) { try { audioRecorderRef.current.stop(); } catch {} audioRecorderRef.current = null; }
       audioHandlerRef.current = null;
     };
 
     const startRelayCapture = () => {
       stopRelayCapture();
-
-      // ── Video: canvas → JPEG → WebSocket (type byte 0) ──
+      // Video: canvas → JPEG → WS (type byte 0)
       const canvas = document.createElement('canvas');
       canvas.width = 320; canvas.height = 240;
       const ctx = canvas.getContext('2d')!;
@@ -219,31 +238,25 @@ export default function VideoChatApp() {
           if (!blob) return;
           blob.arrayBuffer().then(buf => {
             const msg = new Uint8Array(1 + buf.byteLength);
-            msg[0] = 0; // video
+            msg[0] = 0;
             msg.set(new Uint8Array(buf), 1);
             wsRef.current?.send(msg.buffer);
           });
         }, 'image/jpeg', 0.65);
-      }, 100); // 10 fps
+      }, 100);
 
-      // ── Audio: MediaRecorder → Web Audio API (works on iOS + Android) ──
+      // Audio: MediaRecorder → Web Audio API (works on iOS + Android)
       const stream = localStreamRef.current;
       if (!stream || !stream.getAudioTracks().length) return;
-
-      // Pick best supported codec: opus/webm (Chrome/Android) → mp4 (iOS Safari)
       const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
         .find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } });
       if (!mimeType) return;
-
-      // Ensure AudioContext exists and is running (iOS needs user-gesture unlock)
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       const audioCtx = audioCtxRef.current;
       audioCtx.resume().catch(() => {});
       audioNextTimeRef.current = audioCtx.currentTime;
-
-      // Playback handler: decode each self-contained chunk via Web Audio API
       audioHandlerRef.current = async (payload: ArrayBuffer) => {
         try {
           await audioCtx.resume();
@@ -252,15 +265,12 @@ export default function VideoChatApp() {
           src.buffer = audioBuf;
           src.connect(audioCtx.destination);
           const now = audioCtx.currentTime;
-          // Reset if scheduler drifted more than 250ms ahead (prevents accumulating delay)
           if (audioNextTimeRef.current > now + 0.25) audioNextTimeRef.current = now + 0.05;
           if (audioNextTimeRef.current < now + 0.05) audioNextTimeRef.current = now + 0.05;
           src.start(audioNextTimeRef.current);
           audioNextTimeRef.current += audioBuf.duration;
-        } catch { /* decode error — skip chunk */ }
+        } catch {}
       };
-
-      // Capture: prepend init segment to every chunk so each is independently decodable
       const audioStream = new MediaStream(stream.getAudioTracks());
       const recorder = new MediaRecorder(audioStream, { mimeType });
       audioRecorderRef.current = recorder;
@@ -268,22 +278,19 @@ export default function VideoChatApp() {
       recorder.ondataavailable = async (e) => {
         if (e.data.size === 0) return;
         const chunk = new Uint8Array(await e.data.arrayBuffer());
-        if (!initSeg) { initSeg = chunk; return; } // first chunk = codec headers only
-        // Combine init + data → self-contained decodable packet
+        if (!initSeg) { initSeg = chunk; return; }
         const combined = new Uint8Array(initSeg.byteLength + chunk.byteLength);
-        combined.set(initSeg, 0);
-        combined.set(chunk, initSeg.byteLength);
+        combined.set(initSeg, 0); combined.set(chunk, initSeg.byteLength);
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const msg = new Uint8Array(1 + combined.byteLength);
-        msg[0] = 1; // audio type
+        msg[0] = 1;
         msg.set(combined, 1);
         wsRef.current.send(msg.buffer);
       };
-      recorder.start(80); // 80 ms — low latency while still decodable
+      recorder.start(80);
     };
 
     const activateRelay = () => {
-      log('Relay WS activado');
       setRelayMode(true);
       setSearching(false);
       setStatus('Conectado (relay)');
@@ -293,15 +300,11 @@ export default function VideoChatApp() {
     const setupPc = async (polite: boolean) => {
       cleanupPc();
       politeRef.current = polite;
-
       const stream = localStreamRef.current;
       if (!stream) return;
-
       const pc = new RTCPeerConnection(rtcConfigRef.current);
       pcRef.current = pc;
-
       for (const track of stream.getTracks()) pc.addTrack(track, stream);
-
       pc.ontrack = (event) => {
         if (!remoteVideoRef.current) return;
         if (!(remoteVideoRef.current.srcObject instanceof MediaStream)) {
@@ -310,26 +313,13 @@ export default function VideoChatApp() {
         (remoteVideoRef.current.srcObject as MediaStream).addTrack(event.track);
         remoteVideoRef.current.play().catch(() => {});
       };
-
       pc.ondatachannel = (event) => attachDataChannel(event.channel);
-      if (!polite) {
-        try { attachDataChannel(pc.createDataChannel('chat')); } catch {}
-      }
-
+      if (!polite) { try { attachDataChannel(pc.createDataChannel('chat')); } catch {} }
       pc.onicecandidate = (event) => {
-        if (!event.candidate) { log('ICE gathering completo'); return; }
-        const c = event.candidate;
-        log(`ICE out: ${c.type} ${c.protocol}`);
-        try {
-          wsRef.current?.send(JSON.stringify({ type: 'ice-candidate', candidate: c.toJSON() }));
-        } catch {}
+        if (!event.candidate) return;
+        try { wsRef.current?.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate.toJSON() })); } catch {}
       };
-
-      pc.oniceconnectionstatechange = () => log(`ICE: ${pc.iceConnectionState}`);
-
-      // Disable onnegotiationneeded — we make the offer explicitly below
       pc.onnegotiationneeded = () => {};
-
       const switchToRelay = () => {
         if (pcRef.current !== pc) return;
         cleanupPc();
@@ -338,65 +328,33 @@ export default function VideoChatApp() {
         }
         activateRelay();
       };
-
-      // If WebRTC doesn't connect within 5 s, fall back to WS relay
       const iceTimer = window.setTimeout(switchToRelay, 5000);
-
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
-        if (st === 'connected') {
-          clearTimeout(iceTimer);
-          setSearching(false);
-          setStatus('Conectado');
-        }
+        if (st === 'connected') { clearTimeout(iceTimer); setSearching(false); setStatus('Conectado'); }
         if (st === 'connecting') setStatus('Conectando video...');
         if (st === 'disconnected') setStatus('Conexión interrumpida, esperando...');
-        if (st === 'failed') {
-          clearTimeout(iceTimer);
-          switchToRelay();
-        }
+        if (st === 'failed') { clearTimeout(iceTimer); switchToRelay(); }
       };
-
-      // Only the impolite peer (polite=false) creates the offer — no collision possible
       if (!polite) {
         try {
-          log('Creando offer...');
           const offer = await pc.createOffer();
-          if (pcRef.current !== pc) return; // PC was replaced while awaiting, abort
+          if (pcRef.current !== pc) return;
           await pc.setLocalDescription(offer);
           wsRef.current?.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription! }));
-          log('Offer enviado');
-        } catch (e) { log(`Error offer: ${e}`); }
+        } catch {}
       }
     };
 
     const handleSignal = async (msg: SignalMessage) => {
       if (msg.type === 'waiting') {
-        log('Servidor: waiting');
-        setSearching(true);
-        setStatus('Buscando a alguien...');
-        setRoomId('');
-        setMessages([]);
-        cleanupPc();
-        return;
+        setSearching(true); setStatus('Buscando a alguien...'); setRoomId(''); setMessages([]); cleanupPc(); return;
       }
-
       if (msg.type === 'matched') {
-        log(`Matched sala=${msg.roomId} polite=${msg.polite}`);
-        setRoomId(msg.roomId);
-        setStatus('Conectando video...');
-        setMessages([]);
-        await setupPc(msg.polite);
-        return;
+        setRoomId(msg.roomId); setStatus('Conectando video...'); setMessages([]); await setupPc(msg.polite); return;
       }
-
       if (msg.type === 'peer-left') {
-        cleanupPc();
-        stopRelayCapture();
-        setRelayMode(false);
-        setSearching(true);
-        setRoomId('');
-        setMessages([]);
+        cleanupPc(); stopRelayCapture(); setRelayMode(false); setSearching(true); setRoomId(''); setMessages([]);
         setStatus('El extraño se fue, buscando otro...');
         if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
           setTimeout(() => {
@@ -407,56 +365,33 @@ export default function VideoChatApp() {
         }
         return;
       }
-
-      if (msg.type === 'use-relay') {
-        log('Peer solicitó relay WS');
-        activateRelay();
-        return;
-      }
-
+      if (msg.type === 'use-relay') { activateRelay(); return; }
       if (msg.type === 'relay-chat') {
         const text = String(msg.text ?? '').trim();
         if (!text) return;
         setMessages(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, sender: 'stranger', text }]);
         return;
       }
-
       const pc = pcRef.current;
       if (!pc) return;
-
       if (msg.type === 'offer') {
-        log(`Offer recibido (${iceCandidateQueueRef.current.length} cands en cola)`);
         await pc.setRemoteDescription(msg.sdp);
-        for (const c of iceCandidateQueueRef.current) {
-          try { await pc.addIceCandidate(c); } catch {}
-        }
+        for (const c of iceCandidateQueueRef.current) { try { await pc.addIceCandidate(c); } catch {} }
         iceCandidateQueueRef.current = [];
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         wsRef.current?.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription! }));
-        log('Answer enviado');
         return;
       }
-
       if (msg.type === 'answer') {
-        log(`Answer recibido (${iceCandidateQueueRef.current.length} cands en cola)`);
         await pc.setRemoteDescription(msg.sdp);
-        for (const c of iceCandidateQueueRef.current) {
-          try { await pc.addIceCandidate(c); } catch {}
-        }
+        for (const c of iceCandidateQueueRef.current) { try { await pc.addIceCandidate(c); } catch {} }
         iceCandidateQueueRef.current = [];
         return;
       }
-
       if (msg.type === 'ice-candidate') {
-        const typ = (msg.candidate as RTCIceCandidateInit).candidate?.split(' ')[7] ?? '?';
-        if (!pc.remoteDescription) {
-          log(`ICE in (buffered): ${typ}`);
-          iceCandidateQueueRef.current.push(msg.candidate);
-        } else {
-          log(`ICE in: ${typ}`);
-          try { await pc.addIceCandidate(msg.candidate); } catch {}
-        }
+        if (!pc.remoteDescription) iceCandidateQueueRef.current.push(msg.candidate);
+        else { try { await pc.addIceCandidate(msg.candidate); } catch {} }
       }
     };
 
@@ -464,9 +399,7 @@ export default function VideoChatApp() {
       if (stopped) return;
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
       const delay = Math.min(10_000, 500 * Math.pow(2, Math.min(6, attempt)));
-      reconnectTimerRef.current = window.setTimeout(() => {
-        connect(attempt + 1).catch(console.error);
-      }, delay);
+      reconnectTimerRef.current = window.setTimeout(() => connect(attempt + 1).catch(console.error), delay);
     };
 
     const connect = async (attempt = 0) => {
@@ -474,28 +407,19 @@ export default function VideoChatApp() {
       try {
         const stream = await ensureLocalMedia();
         if (!stream) return;
-
         if (attempt === 0) await fetchIceConfig();
-
         const ws = new WebSocket(getSignalingUrl());
         ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
-
-        ws.onopen = () => {
-          log('WS abierto → find-match');
-          setStatus('Buscando a alguien...');
-          ws.send(JSON.stringify({ type: 'find-match' }));
-        };
-        ws.onerror = () => { log('WS error'); setStatus('Error: no se pudo conectar al servidor de señalización'); };
+        ws.onopen = () => { setStatus('Buscando a alguien...'); ws.send(JSON.stringify({ type: 'find-match' })); };
+        ws.onerror = () => setStatus('Error: no se pudo conectar al servidor');
         ws.onmessage = async (event) => {
           try {
-            // Binary relay: first byte = type (0 = video, 1 = audio)
             if (event.data instanceof ArrayBuffer) {
               const view = new Uint8Array(event.data);
               const type = view[0];
               const payload = event.data.slice(1);
               if (type === 0) {
-                // JPEG video frame
                 const blob = new Blob([payload], { type: 'image/jpeg' });
                 const url = URL.createObjectURL(blob);
                 if (lastFrameUrlRef.current) URL.revokeObjectURL(lastFrameUrlRef.current);
@@ -510,33 +434,18 @@ export default function VideoChatApp() {
             await handleSignal(data);
           } catch (e) { console.error(e); }
         };
-        ws.onclose = () => {
-          if (!stopped) { setStatus('Reconectando...'); scheduleReconnect(attempt); }
-        };
-      } catch (e) {
-        console.error(e);
-        scheduleReconnect(attempt);
-      }
+        ws.onclose = () => { if (!stopped) { setStatus('Reconectando...'); scheduleReconnect(attempt); } };
+      } catch (e) { console.error(e); scheduleReconnect(attempt); }
     };
-
-    // Unlock AudioContext on first gesture so iOS allows audio playback
-    const unlockAudio = () => {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      audioCtxRef.current.resume().catch(() => {});
-    };
-    document.addEventListener('touchstart', unlockAudio, { once: true });
-    document.addEventListener('click', unlockAudio, { once: true });
 
     connect().catch(console.error);
 
     return () => {
       stopped = true;
-      document.removeEventListener('touchstart', unlockAudio);
-      document.removeEventListener('click', unlockAudio);
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-      stopRelayCapture();
+      if (relayIntervalRef.current !== null) { clearInterval(relayIntervalRef.current); relayIntervalRef.current = null; }
+      if (audioRecorderRef.current) { try { audioRecorderRef.current.stop(); } catch {} audioRecorderRef.current = null; }
+      audioHandlerRef.current = null;
       if (lastFrameUrlRef.current) { URL.revokeObjectURL(lastFrameUrlRef.current); lastFrameUrlRef.current = null; }
       try { wsRef.current?.send(JSON.stringify({ type: 'leave' })); } catch {}
       try { wsRef.current?.close(); } catch {}
@@ -547,10 +456,39 @@ export default function VideoChatApp() {
         localStreamRef.current = null;
       }
     };
-  }, []);
+  }, [chatSessionId]);
+
+  // ── Handlers ──────────────────────────────────────────────
+  const handleEnterChat = async () => {
+    setEnteringChat(true);
+    try {
+      if (!localStreamRef.current) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStreamRef.current = stream;
+      }
+      setAppView('chat');
+      setChatSessionId(prev => prev + 1);
+    } catch {
+      alert('Necesitamos acceso a tu cámara y micrófono para continuar.');
+    } finally {
+      setEnteringChat(false);
+    }
+  };
+
+  const handleStop = () => {
+    if (pointsIntervalRef.current) { clearInterval(pointsIntervalRef.current); pointsIntervalRef.current = null; }
+    setShowNoPointsModal(false);
+    setRelayMode(false);
+    setDcReady(false);
+    setSearching(true);
+    setMessages([]);
+    setRoomId('');
+    setStatus('Conectando al servidor...');
+    setChatSessionId(0); // triggers effect cleanup (closes WS, stops stream, closes PC)
+    setAppView('home');
+  };
 
   const handleNext = () => {
-    politeRef.current = false;
     if (pcRef.current) { try { pcRef.current.close(); } catch {} pcRef.current = null; }
     if (dataChannelRef.current) { try { dataChannelRef.current.close(); } catch {} dataChannelRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
@@ -559,6 +497,7 @@ export default function VideoChatApp() {
     if (remoteImgRef.current) remoteImgRef.current.src = '';
     if (audioRecorderRef.current) { try { audioRecorderRef.current.stop(); } catch {} audioRecorderRef.current = null; }
     audioHandlerRef.current = null;
+    politeRef.current = false;
     setRelayMode(false);
     setSearching(true);
     setMessages([]);
@@ -568,6 +507,23 @@ export default function VideoChatApp() {
     }
   };
 
+  const handleSendMessage = () => {
+    const text = inputValue.trim();
+    if (!text) return;
+    setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
+    const dc = dataChannelRef.current;
+    if (dc?.readyState === 'open') { try { dc.send(text); } catch {} }
+    else if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'relay-chat', text }));
+    }
+    setInputValue('');
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
+  };
+
+  // ── Chat JSX helpers ──────────────────────────────────────
   const messagesList = messages.map((msg) => (
     <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
       {msg.sender === 'stranger' ? (
@@ -584,90 +540,467 @@ export default function VideoChatApp() {
     </div>
   ));
 
-  const chatInput = (
-    <div className="px-4 pt-2 pb-1 flex gap-2 items-end">
-      <input
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyPress={handleKeyPress}
-        placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
-        disabled={searching}
-className="flex-1 bg-white text-gray-900 rounded-full px-4 py-3 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg disabled:opacity-50"
-      />
-      <button
-        onClick={handleSendMessage}
-        className="bg-blue-500 hover:bg-blue-600 text-white rounded-full p-3 flex items-center justify-center shadow-lg transition-colors"
-      >
-        <Send size={20} />
-      </button>
-    </div>
-  );
+  // ── Shared premium menu items ─────────────────────────────
+  const premiumItems = [
+    { icon: '🌍', label: 'Filtro por País', cost: '2 pts/min' },
+    { icon: '⚧', label: 'Género Exacto', cost: '1 pt/min' },
+  ];
 
-  const actionButtons = (
-    <div className="px-4 pb-3 flex gap-3">
-      <button onClick={handleNext} className="bg-red-500 hover:bg-red-600 rounded-2xl p-3 flex items-center justify-center shadow-lg transition-colors">
-        <Square size={24} className="text-white fill-white" />
-      </button>
-      <button onClick={handleNext} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl py-3 font-bold text-center shadow-lg transition-colors">
-        Siguiente
-      </button>
-    </div>
-  );
-
+  // ── Render ────────────────────────────────────────────────
   return (
-    <div className="fixed left-0 right-0 flex justify-center bg-gray-900 overflow-hidden" style={{ top: 'var(--app-top, 0px)', height: 'var(--app-h, 100dvh)' }}>
-      <div className="w-full max-w-md bg-gray-900 flex flex-col overflow-hidden h-full">
-        {/* Top Status Bar */}
-        <div className="bg-black/40 backdrop-blur-md px-6 py-3 flex justify-between items-center relative z-40 shrink-0">
-          <div className="bg-gray-600 text-white px-4 py-2 rounded-full text-sm font-medium">
-            {searching ? 'Buscando...' : 'Extraño'}
-          </div>
-          <div className="bg-gray-700 text-white px-4 py-2 rounded-full flex items-center gap-3 text-xs font-medium">
-            <span>🔗 {roomId || '...'}</span>
-            <div className="w-px h-4 bg-gray-500"></div>
-            <span>💎 12</span>
+    <div
+      style={{
+        position: 'fixed',
+        top: 'var(--app-top, 0px)',
+        left: 0, right: 0,
+        height: 'var(--app-h, 100dvh)',
+        overflow: 'hidden',
+        background: '#07071a',
+      }}
+    >
+      {/* ════════════════ HOME VIEW ════════════════ */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          opacity: appView === 'home' ? 1 : 0,
+          transform: appView === 'home' ? 'scale(1)' : 'scale(0.96)',
+          transition: 'opacity 0.45s ease, transform 0.45s ease',
+          pointerEvents: appView === 'home' ? 'auto' : 'none',
+          background: 'linear-gradient(160deg, #07071a 0%, #0e0e2e 55%, #07071a 100%)',
+          overflowY: 'auto',
+        }}
+      >
+        {/* Top bar */}
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 10,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 20px',
+          background: 'rgba(7,7,26,0.85)',
+          backdropFilter: 'blur(14px)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <span style={{ color: '#a5b4fc', fontSize: 14, fontWeight: 600, letterSpacing: '0.04em' }}>
+            🪙 {points} pts
+          </span>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowPremiumMenu(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'rgba(99,102,241,0.12)',
+                border: '1px solid rgba(99,102,241,0.35)',
+                borderRadius: 20, padding: '7px 15px',
+                color: '#a5b4fc', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '0.06em',
+              }}
+            >
+              <Diamond size={13} />
+              PREMIUM
+            </button>
+            {showPremiumMenu && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                background: 'rgba(12,12,38,0.97)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                borderRadius: 16, padding: '8px',
+                minWidth: 230, zIndex: 50,
+                boxShadow: '0 12px 40px rgba(0,0,0,0.6), 0 0 30px rgba(99,102,241,0.08)',
+              }}>
+                <div style={{ padding: '5px 10px 10px', color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                  Filtros Exclusivos
+                </div>
+                {premiumItems.map(item => (
+                  <button
+                    key={item.label}
+                    onClick={() => setShowPremiumMenu(false)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', padding: '10px 12px', borderRadius: 10,
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: 'white', fontSize: 13, textAlign: 'left',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.15)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>{item.icon} {item.label}</span>
+                    <span style={{ color: '#818cf8', fontSize: 11, fontWeight: 700 }}>{item.cost}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Status bar */}
-        <div className="bg-gray-800 px-6 py-1 text-center text-xs text-gray-400 shrink-0">{status}</div>
+        {/* Hero */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '40px 24px 32px' }}>
+          {/* Logo */}
+          <div style={{
+            width: 84, height: 84, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.02em',
+            boxShadow: '0 0 50px rgba(99,102,241,0.55), 0 0 100px rgba(99,102,241,0.15)',
+            marginBottom: 22,
+          }}>
+            VA
+          </div>
+          <h1 style={{
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: 21, fontWeight: 400, color: 'white',
+            letterSpacing: '0.22em', textTransform: 'uppercase', margin: '0 0 8px',
+          }}>
+            The Velvet Aperture
+          </h1>
+          <p style={{ color: 'rgba(165,180,252,0.6)', fontSize: 14, fontStyle: 'italic', margin: '0 0 34px' }}>
+            Encuentra tu conexión
+          </p>
 
-        {/* Remote Video — 50% */}
-        <div className="flex-1 relative overflow-hidden bg-black">
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ transform: 'scaleX(-1)' }} className={`w-full h-full object-cover ${relayMode ? 'hidden' : ''}`} />
-          <img ref={remoteImgRef} alt="" style={{ transform: 'scaleX(-1)' }} className={`w-full h-full object-cover ${relayMode ? '' : 'hidden'}`} />
-          {searching && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-              <div className="text-white text-center space-y-2">
-                <div className="text-4xl">🔍</div>
-                <div className="text-sm font-medium">Buscando a alguien...</div>
+          {/* Preferences card */}
+          <div style={{
+            width: '100%', maxWidth: 380,
+            background: 'rgba(255,255,255,0.035)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 22, padding: '22px 20px',
+            marginBottom: 22,
+          }}>
+            {/* Gender */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+                Género
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['Todos', 'Hombres', 'Mujeres'].map(g => (
+                  <button
+                    key={g}
+                    onClick={() => setPrefGender(g)}
+                    style={{
+                      flex: 1, padding: '9px 0', borderRadius: 11, fontSize: 13, fontWeight: 500,
+                      border: prefGender === g ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)',
+                      background: prefGender === g ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)',
+                      color: prefGender === g ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
+                      cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    {g}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
-          <div className="absolute top-2 left-3">
-            <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Extraño</span>
-          </div>
-        </div>
 
-        {/* Local Video — 50%, input overlaid at bottom with 40% opacity */}
-        <div className="flex-1 relative overflow-hidden bg-black">
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-          <div className="absolute top-2 left-3">
-            <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Tú</span>
+            {/* Region */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+                Región
+              </div>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={prefRegion}
+                  onChange={e => setPrefRegion(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 36px 10px 14px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.09)',
+                    borderRadius: 11, color: 'rgba(255,255,255,0.75)',
+                    fontSize: 13, cursor: 'pointer', appearance: 'none', outline: 'none',
+                  }}
+                >
+                  {REGIONS.map(r => (
+                    <option key={r} value={r} style={{ background: '#1a1a3e' }}>{r}</option>
+                  ))}
+                </select>
+                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none', fontSize: 11 }}>▾</span>
+              </div>
+            </div>
+
+            {/* Age */}
+            <div>
+              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+                Edad
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['Todos', '18–25', '26–35', '36+'].map(a => (
+                  <button
+                    key={a}
+                    onClick={() => setPrefAge(a)}
+                    style={{
+                      flex: 1, padding: '9px 0', borderRadius: 11, fontSize: 12, fontWeight: 500,
+                      border: prefAge === a ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)',
+                      background: prefAge === a ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)',
+                      color: prefAge === a ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
+                      cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          {/* Chat messages */}
-          <div className="absolute bottom-24 left-0 right-0 max-h-28 overflow-y-auto px-4 space-y-2 pointer-events-none">
-            {messagesList}
-            <div ref={messagesEndRef} />
+
+          {/* CTA */}
+          <button
+            onClick={handleEnterChat}
+            disabled={enteringChat}
+            style={{
+              width: '100%', maxWidth: 380,
+              padding: '17px 0',
+              background: enteringChat
+                ? 'rgba(99,102,241,0.35)'
+                : 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+              border: 'none', borderRadius: 16,
+              color: 'white', fontSize: 15, fontWeight: 800,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              cursor: enteringChat ? 'not-allowed' : 'pointer',
+              boxShadow: enteringChat ? 'none' : '0 0 35px rgba(99,102,241,0.5), 0 6px 24px rgba(0,0,0,0.4)',
+              transition: 'all 0.2s',
+              marginBottom: 14,
+            }}
+          >
+            {enteringChat ? 'Abriendo cámara...' : 'Entrar al Chat'}
+          </button>
+
+          <p style={{ color: 'rgba(255,255,255,0.18)', fontSize: 11 }}>
+            Al entrar aceptas nuestros términos de uso · +18
+          </p>
+        </div>
+      </div>
+
+      {/* ════════════════ CHAT VIEW ════════════════ */}
+      <div
+        style={{
+          position: 'absolute', inset: 0,
+          opacity: appView === 'chat' ? 1 : 0,
+          transform: appView === 'chat' ? 'scale(1)' : 'scale(1.04)',
+          transition: 'opacity 0.45s ease, transform 0.45s ease',
+          pointerEvents: appView === 'chat' ? 'auto' : 'none',
+          display: 'flex', justifyContent: 'center',
+          background: '#111827',
+        }}
+      >
+        <div style={{ width: '100%', maxWidth: 448, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+
+          {/* Chat top bar */}
+          <div style={{
+            background: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(12px)',
+            padding: '12px 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexShrink: 0, zIndex: 40, position: 'relative',
+          }}>
+            <div style={{ background: 'rgba(75,85,99,0.7)', color: 'white', padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 500 }}>
+              {searching ? 'Buscando...' : 'Extraño'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ background: 'rgba(55,65,81,0.8)', color: 'white', padding: '7px 14px', borderRadius: 20, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>🪙 {points}</span>
+                <span style={{ color: 'rgba(255,255,255,0.25)' }}>|</span>
+                <span style={{ opacity: 0.6 }}>🔗 {roomId || '...'}</span>
+              </div>
+              {/* Premium button in chat */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setShowPremiumMenu(v => !v)}
+                  style={{
+                    background: 'rgba(99,102,241,0.18)',
+                    border: '1px solid rgba(99,102,241,0.4)',
+                    borderRadius: 20, padding: '7px 10px',
+                    color: '#a5b4fc', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  <Diamond size={13} />
+                </button>
+                {showPremiumMenu && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                    background: 'rgba(12,12,38,0.97)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(99,102,241,0.25)',
+                    borderRadius: 14, padding: '8px',
+                    minWidth: 210, zIndex: 50,
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+                  }}>
+                    <div style={{ padding: '4px 10px 8px', color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                      Filtros Premium
+                    </div>
+                    {premiumItems.map(item => (
+                      <button
+                        key={item.label}
+                        onClick={() => setShowPremiumMenu(false)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          width: '100%', padding: '9px 10px', borderRadius: 8,
+                          background: 'transparent', border: 'none', cursor: 'pointer',
+                          color: 'white', fontSize: 12, textAlign: 'left',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.15)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span>{item.icon} {item.label}</span>
+                        <span style={{ color: '#818cf8', fontSize: 11, fontWeight: 700 }}>{item.cost}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          {/* Input + buttons at bottom, 40% opacity so camera shows through */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gray-900/40 backdrop-blur-sm">
-            {chatInput}
-            {actionButtons}
+
+          {/* Status bar */}
+          <div style={{ background: '#1f2937', padding: '4px 24px', textAlign: 'center', fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>
+            {status}
+          </div>
+
+          {/* Remote video — top 50% */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'black' }}>
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'none' : 'block' }}
+            />
+            <img
+              ref={remoteImgRef}
+              alt=""
+              style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'block' : 'none' }}
+            />
+            {searching && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)' }}>
+                <div style={{ color: 'white', textAlign: 'center' }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>Buscando a alguien...</div>
+                </div>
+              </div>
+            )}
+            <span style={{ position: 'absolute', top: 8, left: 12, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 11, padding: '2px 9px', borderRadius: 20 }}>
+              Extraño
+            </span>
+          </div>
+
+          {/* Local video — bottom 50%, input overlaid */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'black' }}>
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+            />
+            <span style={{ position: 'absolute', top: 8, left: 12, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 11, padding: '2px 9px', borderRadius: 20 }}>
+              Tú
+            </span>
+            {/* Chat messages */}
+            <div style={{ position: 'absolute', bottom: 96, left: 0, right: 0, maxHeight: 112, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {messagesList}
+              </div>
+              <div ref={messagesEndRef} />
+            </div>
+            {/* Input + buttons */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(17,24,39,0.4)', backdropFilter: 'blur(8px)' }}>
+              <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={e => setInputValue(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
+                  disabled={searching}
+                  style={{
+                    flex: 1, background: 'white', color: '#111827',
+                    borderRadius: 24, padding: '11px 16px', fontSize: 14,
+                    border: 'none', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    opacity: searching ? 0.5 : 1,
+                  }}
+                />
+                <button
+                  onClick={handleSendMessage}
+                  style={{
+                    background: '#3b82f6', color: 'white', border: 'none',
+                    borderRadius: '50%', width: 44, height: 44,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+              <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10 }}>
+                <button
+                  onClick={handleStop}
+                  style={{
+                    background: '#ef4444', border: 'none', borderRadius: 14,
+                    padding: '11px 14px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  <Square size={22} fill="white" color="white" />
+                </button>
+                <button
+                  onClick={handleNext}
+                  style={{
+                    flex: 1, background: '#3b82f6', border: 'none', borderRadius: 14,
+                    color: 'white', fontWeight: 700, fontSize: 14,
+                    padding: '11px', cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  }}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ════════════════ NO-POINTS MODAL ════════════════ */}
+      {showNoPointsModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(10px)',
+        }}>
+          <div style={{
+            background: 'rgba(12,12,38,0.98)',
+            border: '1px solid rgba(99,102,241,0.3)',
+            borderRadius: 26, padding: '36px 28px',
+            maxWidth: 300, width: '88%', textAlign: 'center',
+            boxShadow: '0 0 80px rgba(99,102,241,0.2)',
+          }}>
+            <div style={{ fontSize: 52, marginBottom: 14 }}>🪙</div>
+            <h2 style={{ color: 'white', fontSize: 21, fontWeight: 800, margin: '0 0 10px' }}>
+              ¡Sin puntos!
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14, margin: '0 0 26px', lineHeight: 1.5 }}>
+              Ups, te quedaste sin puntos. Recarga para seguir conectando.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button style={{
+                padding: '14px', borderRadius: 14,
+                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                border: 'none', color: 'white', fontSize: 14, fontWeight: 800,
+                cursor: 'pointer', boxShadow: '0 0 25px rgba(99,102,241,0.45)',
+              }}>
+                Recargar Puntos
+              </button>
+              <button
+                onClick={handleStop}
+                style={{
+                  padding: '14px', borderRadius: 14,
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.65)', fontSize: 14,
+                  cursor: 'pointer',
+                }}
+              >
+                Volver al inicio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
