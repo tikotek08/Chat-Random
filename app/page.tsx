@@ -265,8 +265,8 @@ export default function VideoChatApp() {
           src.buffer = audioBuf;
           src.connect(audioCtx.destination);
           const now = audioCtx.currentTime;
-          if (audioNextTimeRef.current > now + 0.25) audioNextTimeRef.current = now + 0.05;
-          if (audioNextTimeRef.current < now + 0.05) audioNextTimeRef.current = now + 0.05;
+          if (audioNextTimeRef.current > now + 0.12) audioNextTimeRef.current = now + 0.02;
+          if (audioNextTimeRef.current < now + 0.02) audioNextTimeRef.current = now + 0.02;
           src.start(audioNextTimeRef.current);
           audioNextTimeRef.current += audioBuf.duration;
         } catch {}
@@ -287,7 +287,7 @@ export default function VideoChatApp() {
         msg.set(combined, 1);
         wsRef.current.send(msg.buffer);
       };
-      recorder.start(80);
+      recorder.start(40);
     };
 
     const activateRelay = () => {
