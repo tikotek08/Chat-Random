@@ -279,7 +279,7 @@ export default function VideoChatApp() {
         msg.set(combined, 1);
         wsRef.current.send(msg.buffer);
       };
-      recorder.start(100); // 100 ms — low latency while still decodable
+      recorder.start(80); // 80 ms — low latency while still decodable
     };
 
     const activateRelay = () => {
