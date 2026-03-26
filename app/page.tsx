@@ -525,16 +525,16 @@ export default function VideoChatApp() {
 
   // ── Chat JSX helpers ──────────────────────────────────────
   const messagesList = messages.map((msg) => (
-    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+    <div key={msg.id} style={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
       {msg.sender === 'stranger' ? (
-        <div className="max-w-xs">
-          <div className="text-xs font-bold text-gray-300 mb-1 ml-2">EXTRAÑO</div>
-          <div className="bg-white text-gray-900 px-4 py-3 rounded-3xl shadow-lg">{msg.text}</div>
+        <div style={{ maxWidth: 240 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(165,180,252,0.7)', marginBottom: 4, marginLeft: 10, letterSpacing: '0.08em' }}>EXTRAÑO</div>
+          <div style={{ background: 'rgba(255,255,255,0.92)', color: '#0e0e2e', padding: '10px 16px', borderRadius: 20, fontSize: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.3)' }}>{msg.text}</div>
         </div>
       ) : (
-        <div className="max-w-xs">
-          <div className="text-xs font-bold text-blue-300 mb-1 mr-2 text-right">TÚ</div>
-          <div className="bg-blue-500 text-white px-4 py-3 rounded-3xl shadow-lg">{msg.text}</div>
+        <div style={{ maxWidth: 240 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', marginBottom: 4, marginRight: 10, textAlign: 'right', letterSpacing: '0.08em' }}>TÚ</div>
+          <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: 'white', padding: '10px 16px', borderRadius: 20, fontSize: 14, boxShadow: '0 2px 12px rgba(99,102,241,0.4)' }}>{msg.text}</div>
         </div>
       )}
     </div>
@@ -775,27 +775,28 @@ export default function VideoChatApp() {
           transition: 'opacity 0.45s ease, transform 0.45s ease',
           pointerEvents: appView === 'chat' ? 'auto' : 'none',
           display: 'flex', justifyContent: 'center',
-          background: '#111827',
+          background: 'linear-gradient(160deg, #07071a 0%, #0e0e2e 55%, #07071a 100%)',
         }}
       >
         <div style={{ width: '100%', maxWidth: 448, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
 
           {/* Chat top bar */}
           <div style={{
-            background: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(12px)',
+            background: 'rgba(7,7,26,0.88)',
+            backdropFilter: 'blur(14px)',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
             padding: '12px 20px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             flexShrink: 0, zIndex: 40, position: 'relative',
           }}>
-            <div style={{ background: 'rgba(75,85,99,0.7)', color: 'white', padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 500 }}>
+            <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc', padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>
               {searching ? 'Buscando...' : 'Extraño'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ background: 'rgba(55,65,81,0.8)', color: 'white', padding: '7px 14px', borderRadius: 20, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>🪙 {points}</span>
-                <span style={{ color: 'rgba(255,255,255,0.25)' }}>|</span>
-                <span style={{ opacity: 0.6 }}>🔗 {roomId || '...'}</span>
+              <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '7px 14px', borderRadius: 20, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#a5b4fc', fontWeight: 600 }}>🪙 {points}</span>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>🔗 {roomId || '...'}</span>
               </div>
               {/* Premium button in chat */}
               <div style={{ position: 'relative' }}>
@@ -848,12 +849,12 @@ export default function VideoChatApp() {
           </div>
 
           {/* Status bar */}
-          <div style={{ background: '#1f2937', padding: '4px 24px', textAlign: 'center', fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>
+          <div style={{ background: 'rgba(7,7,26,0.7)', padding: '4px 24px', textAlign: 'center', fontSize: 11, color: 'rgba(165,180,252,0.5)', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
             {status}
           </div>
 
           {/* Remote video — top 50% */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'black' }}>
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a' }}>
             <video
               ref={remoteVideoRef}
               autoPlay
@@ -866,20 +867,20 @@ export default function VideoChatApp() {
               style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'block' : 'none' }}
             />
             {searching && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.72)' }}>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,7,26,0.82)' }}>
                 <div style={{ color: 'white', textAlign: 'center' }}>
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>Buscando a alguien...</div>
+                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, boxShadow: '0 0 30px rgba(99,102,241,0.5)' }}>🔍</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(165,180,252,0.8)' }}>Buscando a alguien...</div>
                 </div>
               </div>
             )}
-            <span style={{ position: 'absolute', top: 8, left: 12, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 11, padding: '2px 9px', borderRadius: 20 }}>
+            <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
               Extraño
             </span>
           </div>
 
           {/* Local video — bottom 50%, input overlaid */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: 'black' }}>
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
             <video
               ref={localVideoRef}
               autoPlay
@@ -887,7 +888,7 @@ export default function VideoChatApp() {
               muted
               style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
             />
-            <span style={{ position: 'absolute', top: 8, left: 12, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 11, padding: '2px 9px', borderRadius: 20 }}>
+            <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
               Tú
             </span>
             {/* Chat messages */}
@@ -898,7 +899,7 @@ export default function VideoChatApp() {
               <div ref={messagesEndRef} />
             </div>
             {/* Input + buttons */}
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(17,24,39,0.4)', backdropFilter: 'blur(8px)' }}>
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(7,7,26,0.7)', backdropFilter: 'blur(14px)', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
               <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                 <input
                   type="text"
@@ -908,19 +909,24 @@ export default function VideoChatApp() {
                   placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
                   disabled={searching}
                   style={{
-                    flex: 1, background: 'white', color: '#111827',
+                    flex: 1,
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(99,102,241,0.25)',
+                    color: 'white',
                     borderRadius: 24, padding: '11px 16px', fontSize: 14,
-                    border: 'none', outline: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                    opacity: searching ? 0.5 : 1,
+                    outline: 'none',
+                    opacity: searching ? 0.4 : 1,
                   }}
                 />
                 <button
                   onClick={handleSendMessage}
                   style={{
-                    background: '#3b82f6', color: 'white', border: 'none',
+                    background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+                    color: 'white', border: 'none',
                     borderRadius: '50%', width: 44, height: 44,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    cursor: 'pointer', flexShrink: 0,
+                    boxShadow: '0 0 16px rgba(99,102,241,0.5)',
                   }}
                 >
                   <Send size={18} />
@@ -930,10 +936,12 @@ export default function VideoChatApp() {
                 <button
                   onClick={handleStop}
                   style={{
-                    background: '#ef4444', border: 'none', borderRadius: 14,
+                    background: 'rgba(239,68,68,0.85)',
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    borderRadius: 14,
                     padding: '11px 14px', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    boxShadow: '0 0 18px rgba(239,68,68,0.35)',
                   }}
                 >
                   <Square size={22} fill="white" color="white" />
@@ -941,10 +949,13 @@ export default function VideoChatApp() {
                 <button
                   onClick={handleNext}
                   style={{
-                    flex: 1, background: '#3b82f6', border: 'none', borderRadius: 14,
-                    color: 'white', fontWeight: 700, fontSize: 14,
+                    flex: 1,
+                    background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+                    border: 'none', borderRadius: 14,
+                    color: 'white', fontWeight: 800, fontSize: 14,
+                    letterSpacing: '0.06em',
                     padding: '11px', cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    boxShadow: '0 0 22px rgba(99,102,241,0.45)',
                   }}
                 >
                   Siguiente
