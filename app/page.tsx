@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Square, Diamond } from 'lucide-react';
+import { Send, Square, Diamond, Home, Video, Search, User } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -40,6 +40,7 @@ export default function VideoChatApp() {
   const [prefRegion, setPrefRegion] = useState('Global');
   const [prefAge, setPrefAge] = useState('Todos');
   const [enteringChat, setEnteringChat] = useState(false);
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'search' | 'profile'>('chat');
 
   // ── Chat state ────────────────────────────────────────────
   const [roomId, setRoomId] = useState('');
@@ -653,191 +654,226 @@ export default function VideoChatApp() {
           background: 'linear-gradient(160deg, #07071a 0%, #0e0e2e 55%, #07071a 100%)',
         }}
       >
-        <div style={{ width: '100%', maxWidth: 448, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+        <div style={{ width: '100%', maxWidth: 448, display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-          {/* Chat top bar */}
-          <div style={{
-            background: 'rgba(7,7,26,0.88)',
-            backdropFilter: 'blur(14px)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            padding: '12px 20px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            flexShrink: 0, zIndex: 40, position: 'relative',
-          }}>
-            <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc', padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>
-              {searching ? 'Buscando...' : 'Extraño'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '7px 14px', borderRadius: 20, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#a5b4fc', fontWeight: 600 }}>🪙 {points}</span>
-                <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
-                <span style={{ color: 'rgba(255,255,255,0.4)' }}>🔗 {roomId || '...'}</span>
-              </div>
-              {/* Premium button in chat */}
-              <div style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setShowPremiumMenu(v => !v)}
-                  style={{
-                    background: 'rgba(99,102,241,0.18)',
-                    border: '1px solid rgba(99,102,241,0.4)',
-                    borderRadius: 20, padding: '7px 10px',
-                    color: '#a5b4fc', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center',
-                  }}
-                >
-                  <Diamond size={13} />
-                </button>
-                {showPremiumMenu && (
-                  <div style={{
-                    position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                    background: 'rgba(12,12,38,0.97)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(99,102,241,0.25)',
-                    borderRadius: 14, padding: '8px',
-                    minWidth: 210, zIndex: 50,
-                    boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
-                  }}>
-                    <div style={{ padding: '4px 10px 8px', color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                      Filtros Premium
-                    </div>
-                    {premiumItems.map(item => (
-                      <button
-                        key={item.label}
-                        onClick={() => setShowPremiumMenu(false)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          width: '100%', padding: '9px 10px', borderRadius: 8,
-                          background: 'transparent', border: 'none', cursor: 'pointer',
-                          color: 'white', fontSize: 12, textAlign: 'left',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.15)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <span>{item.icon} {item.label}</span>
-                        <span style={{ color: '#818cf8', fontSize: 11, fontWeight: 700 }}>{item.cost}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          {/* ── Tab content area ── */}
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
 
-          {/* Status bar */}
-          <div style={{ background: 'rgba(7,7,26,0.7)', padding: '4px 24px', textAlign: 'center', fontSize: 11, color: 'rgba(165,180,252,0.5)', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-            {status}
-          </div>
-
-          {/* Remote video — top 50% */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a' }}>
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'none' : 'block' }}
-            />
-            <img
-              ref={remoteImgRef}
-              alt=""
-              style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'block' : 'none' }}
-            />
-            {searching && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,7,26,0.82)' }}>
-                <div style={{ color: 'white', textAlign: 'center' }}>
-                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, boxShadow: '0 0 30px rgba(99,102,241,0.5)' }}>🔍</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(165,180,252,0.8)' }}>Buscando a alguien...</div>
+            {/* ── INICIO TAB ── */}
+            {activeTab === 'home' && (
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 20 }}>
+                <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: 'white', boxShadow: '0 0 40px rgba(99,102,241,0.45)' }}>
+                  VA
                 </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>Bienvenido a</p>
+                  <h2 style={{ fontFamily: 'Georgia, serif', color: 'white', fontSize: 18, fontWeight: 400, letterSpacing: '0.18em', textTransform: 'uppercase', margin: 0 }}>The Velvet Aperture</h2>
+                </div>
+                {/* Stats */}
+                <div style={{ display: 'flex', gap: 12, width: '100%' }}>
+                  {[
+                    { label: 'En línea', value: '2.4k', icon: '🟢' },
+                    { label: 'Tus puntos', value: `${points}`, icon: '🪙' },
+                  ].map(s => (
+                    <div key={s.label} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '16px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
+                      <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>{s.value}</div>
+                      <div style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, marginTop: 2 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.45)' }}
+                >
+                  Iniciar Chat
+                </button>
               </div>
             )}
-            <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
-              Extraño
-            </span>
+
+            {/* ── CHAT TAB — always in DOM so WebRTC stays alive ── */}
+            <div style={{ display: activeTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+              {/* Top bar */}
+              <div style={{ background: 'rgba(7,7,26,0.88)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, zIndex: 40, position: 'relative' }}>
+                <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc', padding: '7px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>
+                  {searching ? 'Buscando...' : 'Extraño'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', padding: '7px 14px', borderRadius: 20, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#a5b4fc', fontWeight: 600 }}>🪙 {points}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+                    <span style={{ color: 'rgba(255,255,255,0.4)' }}>🔗 {roomId || '...'}</span>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <button onClick={() => setShowPremiumMenu(v => !v)} style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 20, padding: '7px 10px', color: '#a5b4fc', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <Diamond size={13} />
+                    </button>
+                    {showPremiumMenu && (
+                      <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: 'rgba(12,12,38,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 14, padding: '8px', minWidth: 210, zIndex: 50, boxShadow: '0 12px 40px rgba(0,0,0,0.7)' }}>
+                        <div style={{ padding: '4px 10px 8px', color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Filtros Premium</div>
+                        {premiumItems.map(item => (
+                          <button key={item.label} onClick={() => setShowPremiumMenu(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '9px 10px', borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'white', fontSize: 12, textAlign: 'left' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.15)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <span>{item.icon} {item.label}</span>
+                            <span style={{ color: '#818cf8', fontSize: 11, fontWeight: 700 }}>{item.cost}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Status */}
+              <div style={{ background: 'rgba(7,7,26,0.7)', padding: '4px 24px', textAlign: 'center', fontSize: 11, color: 'rgba(165,180,252,0.5)', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{status}</div>
+              {/* Remote video */}
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a' }}>
+                <video ref={remoteVideoRef} autoPlay playsInline style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'none' : 'block' }} />
+                <img ref={remoteImgRef} alt="" style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'block' : 'none' }} />
+                {searching && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,7,26,0.82)' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, boxShadow: '0 0 30px rgba(99,102,241,0.5)' }}>🔍</div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(165,180,252,0.8)' }}>Buscando a alguien...</div>
+                    </div>
+                  </div>
+                )}
+                <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>Extraño</span>
+              </div>
+              {/* Local video */}
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
+                <video ref={localVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>Tú</span>
+                <div style={{ position: 'absolute', bottom: 96, left: 0, right: 0, maxHeight: 112, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{messagesList}</div>
+                  <div ref={messagesEndRef} />
+                </div>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(7,7,26,0.7)', backdropFilter: 'blur(14px)', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
+                  <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyPress={handleKeyPress} placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'} disabled={searching}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(99,102,241,0.25)', color: 'white', borderRadius: 24, padding: '11px 16px', fontSize: 14, outline: 'none', opacity: searching ? 0.4 : 1 }} />
+                    <button onClick={handleSendMessage} style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: 'white', border: 'none', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 0 16px rgba(99,102,241,0.5)' }}>
+                      <Send size={18} />
+                    </button>
+                  </div>
+                  <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10 }}>
+                    <button onClick={handleStop} style={{ background: 'rgba(239,68,68,0.85)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 14, padding: '11px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 18px rgba(239,68,68,0.35)' }}>
+                      <Square size={22} fill="white" color="white" />
+                    </button>
+                    <button onClick={handleNext} style={{ flex: 1, background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '0.06em', padding: '11px', cursor: 'pointer', boxShadow: '0 0 22px rgba(99,102,241,0.45)' }}>
+                      Siguiente
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── BUSCAR TAB ── */}
+            {activeTab === 'search' && (
+              <div style={{ height: '100%', overflowY: 'auto', padding: '32px 24px' }}>
+                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>Buscar personas</p>
+                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 28px' }}>Filtros</h2>
+                {/* Gender */}
+                <div style={{ marginBottom: 22 }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>Género</p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {['Todos', 'Hombres', 'Mujeres'].map(g => (
+                      <button key={g} onClick={() => setPrefGender(g)} style={{ flex: 1, padding: '10px 0', borderRadius: 12, fontSize: 13, fontWeight: 500, border: prefGender === g ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)', background: prefGender === g ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)', color: prefGender === g ? '#a5b4fc' : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.15s' }}>{g}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* Region */}
+                <div style={{ marginBottom: 22 }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>Región</p>
+                  <div style={{ position: 'relative' }}>
+                    <select value={prefRegion} onChange={e => setPrefRegion(e.target.value)} style={{ width: '100%', padding: '11px 36px 11px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, color: 'rgba(255,255,255,0.75)', fontSize: 13, cursor: 'pointer', appearance: 'none', outline: 'none' }}>
+                      {REGIONS.map(r => <option key={r} value={r} style={{ background: '#1a1a3e' }}>{r}</option>)}
+                    </select>
+                    <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none' }}>▾</span>
+                  </div>
+                </div>
+                {/* Age */}
+                <div style={{ marginBottom: 32 }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>Edad</p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {['Todos', '18–25', '26–35', '36+'].map(a => (
+                      <button key={a} onClick={() => setPrefAge(a)} style={{ flex: 1, padding: '10px 0', borderRadius: 12, fontSize: 12, fontWeight: 500, border: prefAge === a ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)', background: prefAge === a ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)', color: prefAge === a ? '#a5b4fc' : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.15s' }}>{a}</button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={() => { setActiveTab('chat'); handleNext(); }} style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.45)' }}>
+                  Buscar ahora
+                </button>
+              </div>
+            )}
+
+            {/* ── PERFIL TAB ── */}
+            {activeTab === 'profile' && (
+              <div style={{ height: '100%', overflowY: 'auto', padding: '32px 24px' }}>
+                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>Tu cuenta</p>
+                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 28px' }}>Perfil</h2>
+                {/* Avatar */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
+                  <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', border: '2px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <User size={32} color="rgba(165,180,252,0.7)" />
+                  </div>
+                  <p style={{ color: 'white', fontWeight: 600, fontSize: 16, margin: '0 0 4px' }}>Anónimo</p>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 13, margin: 0 }}>Sin cuenta vinculada</p>
+                </div>
+                {/* Stats card */}
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: '4px 0', marginBottom: 20 }}>
+                  {[
+                    { label: 'Puntos disponibles', value: `${points} 🪙` },
+                    { label: 'Sesiones hoy', value: '1' },
+                    { label: 'Plan', value: 'Gratuito' },
+                  ].map((item, i, arr) => (
+                    <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14 }}>{item.label}</span>
+                      <span style={{ color: '#a5b4fc', fontWeight: 600, fontSize: 14 }}>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Google link */}
+                <button style={{ width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}>
+                  <svg width="16" height="16" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.017 17.64 11.71 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 600 }}>Vincular cuenta de Google</span>
+                </button>
+              </div>
+            )}
+
+          </div>{/* end tab content */}
+
+          {/* ── Bottom Navigation Bar ── */}
+          <div style={{ flexShrink: 0, height: 62, background: 'rgba(7,7,26,0.95)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center' }}>
+            {([
+              { id: 'home',    icon: <Home size={20} />,   label: 'Inicio'  },
+              { id: 'chat',    icon: <Video size={20} />,  label: 'Chat'    },
+              { id: 'search',  icon: <Search size={20} />, label: 'Buscar'  },
+              { id: 'profile', icon: <User size={20} />,   label: 'Perfil'  },
+            ] as const).map(tab => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    flex: 1, height: '100%', border: 'none', background: 'transparent',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    cursor: 'pointer',
+                    color: active ? '#a5b4fc' : 'rgba(255,255,255,0.3)',
+                    transition: 'color 0.2s',
+                  }}
+                >
+                  <div style={{ opacity: active ? 1 : 0.6, filter: active ? 'drop-shadow(0 0 6px rgba(165,180,252,0.6))' : 'none', transition: 'all 0.2s' }}>
+                    {tab.icon}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, letterSpacing: '0.04em' }}>{tab.label}</span>
+                  {active && <div style={{ position: 'absolute', bottom: 0, width: 28, height: 2, background: 'linear-gradient(90deg,#4f46e5,#7c3aed)', borderRadius: 2 }} />}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Local video — bottom 50%, input overlaid */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
-            />
-            <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
-              Tú
-            </span>
-            {/* Chat messages */}
-            <div style={{ position: 'absolute', bottom: 96, left: 0, right: 0, maxHeight: 112, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {messagesList}
-              </div>
-              <div ref={messagesEndRef} />
-            </div>
-            {/* Input + buttons */}
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(7,7,26,0.7)', backdropFilter: 'blur(14px)', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
-              <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={e => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'}
-                  disabled={searching}
-                  style={{
-                    flex: 1,
-                    background: 'rgba(255,255,255,0.07)',
-                    border: '1px solid rgba(99,102,241,0.25)',
-                    color: 'white',
-                    borderRadius: 24, padding: '11px 16px', fontSize: 14,
-                    outline: 'none',
-                    opacity: searching ? 0.4 : 1,
-                  }}
-                />
-                <button
-                  onClick={handleSendMessage}
-                  style={{
-                    background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
-                    color: 'white', border: 'none',
-                    borderRadius: '50%', width: 44, height: 44,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', flexShrink: 0,
-                    boxShadow: '0 0 16px rgba(99,102,241,0.5)',
-                  }}
-                >
-                  <Send size={18} />
-                </button>
-              </div>
-              <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10 }}>
-                <button
-                  onClick={handleStop}
-                  style={{
-                    background: 'rgba(239,68,68,0.85)',
-                    border: '1px solid rgba(239,68,68,0.4)',
-                    borderRadius: 14,
-                    padding: '11px 14px', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 0 18px rgba(239,68,68,0.35)',
-                  }}
-                >
-                  <Square size={22} fill="white" color="white" />
-                </button>
-                <button
-                  onClick={handleNext}
-                  style={{
-                    flex: 1,
-                    background: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
-                    border: 'none', borderRadius: 14,
-                    color: 'white', fontWeight: 800, fontSize: 14,
-                    letterSpacing: '0.06em',
-                    padding: '11px', cursor: 'pointer',
-                    boxShadow: '0 0 22px rgba(99,102,241,0.45)',
-                  }}
-                >
-                  Siguiente
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
