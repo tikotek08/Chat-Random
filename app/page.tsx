@@ -30,16 +30,14 @@ const DEFAULT_RTC_CONFIG: RTCConfiguration = {
 const REGIONS = ['Global', 'América Latina', 'Norteamérica', 'Europa', 'Asia', 'Medio Oriente'];
 
 const MOCK_PROFILES = [
-  { id: 1,  initials: 'MR', gradient: 'linear-gradient(135deg,#4f46e5,#7c3aed)', flag: '🇲🇽', age: 24, tag: 'Música' },
-  { id: 2,  initials: 'AS', gradient: 'linear-gradient(135deg,#0ea5e9,#6366f1)', flag: '🇦🇷', age: 21, tag: 'Viajes' },
-  { id: 3,  initials: 'LG', gradient: 'linear-gradient(135deg,#ec4899,#8b5cf6)', flag: '🇪🇸', age: 27, tag: 'Arte' },
-  { id: 4,  initials: 'KP', gradient: 'linear-gradient(135deg,#f59e0b,#ef4444)', flag: '🇺🇸', age: 22, tag: 'Gaming' },
-  { id: 5,  initials: 'DM', gradient: 'linear-gradient(135deg,#10b981,#0ea5e9)', flag: '🇧🇷', age: 25, tag: 'Cine' },
-  { id: 6,  initials: 'RV', gradient: 'linear-gradient(135deg,#8b5cf6,#ec4899)', flag: '🇨🇴', age: 19, tag: 'Deportes' },
-  { id: 7,  initials: 'NF', gradient: 'linear-gradient(135deg,#f97316,#eab308)', flag: '🇫🇷', age: 30, tag: 'Tecnología' },
-  { id: 8,  initials: 'CH', gradient: 'linear-gradient(135deg,#06b6d4,#3b82f6)', flag: '🇯🇵', age: 23, tag: 'Anime' },
-  { id: 9,  initials: 'SB', gradient: 'linear-gradient(135deg,#14b8a6,#8b5cf6)', flag: '🇮🇹', age: 28, tag: 'Moda' },
-  { id: 10, initials: 'TW', gradient: 'linear-gradient(135deg,#6366f1,#0ea5e9)', flag: '🇨🇦', age: 26, tag: 'Fotografía' },
+  { id: 1,  flag: '🇲🇽', age: 24, tag: 'Música',      hue: 0   },
+  { id: 2,  flag: '🇦🇷', age: 21, tag: 'Viajes',      hue: 40  },
+  { id: 3,  flag: '🇪🇸', age: 27, tag: 'Arte',        hue: 80  },
+  { id: 4,  flag: '🇺🇸', age: 22, tag: 'Gaming',      hue: 130 },
+  { id: 5,  flag: '🇧🇷', age: 25, tag: 'Cine',        hue: 180 },
+  { id: 6,  flag: '🇨🇴', age: 19, tag: 'Deportes',    hue: 220 },
+  { id: 7,  flag: '🇫🇷', age: 30, tag: 'Tecnología',  hue: 270 },
+  { id: 8,  flag: '🇯🇵', age: 23, tag: 'Anime',       hue: 310 },
 ];
 
 export default function VideoChatApp() {
@@ -54,6 +52,7 @@ export default function VideoChatApp() {
   const [prefAge, setPrefAge] = useState('Todos');
   const [enteringChat, setEnteringChat] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'search' | 'profile'>('chat');
+  const [profilePhoto, setProfilePhoto] = useState<string>('');
 
   // ── Chat state ────────────────────────────────────────────
   const [roomId, setRoomId] = useState('');
@@ -107,6 +106,26 @@ export default function VideoChatApp() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // ── Capture camera snapshot for profile photos ────────────
+  useEffect(() => {
+    if (appView !== 'chat') return;
+    const capture = () => {
+      const video = localVideoRef.current;
+      if (!video || !video.videoWidth) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = 240; canvas.height = 320;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      // Mirror the capture to match what the user sees
+      ctx.translate(240, 0); ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, 240, 320);
+      setProfilePhoto(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    capture();
+    const interval = window.setInterval(capture, 4000);
+    return () => clearInterval(interval);
+  }, [appView]);
 
   // ── Unlock AudioContext on first gesture (iOS) ────────────
   useEffect(() => {
@@ -676,42 +695,58 @@ export default function VideoChatApp() {
             {activeTab === 'home' && (
               <div style={{ height: '100%', overflowY: 'auto' }}>
                 {/* Header */}
-                <div style={{ padding: '20px 20px 14px', background: 'rgba(7,7,26,0.88)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ padding: '20px 20px 14px', background: 'rgba(7,7,26,0.92)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
                   <div>
                     <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 2px' }}>En línea ahora</p>
                     <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>
                       <span style={{ color: '#a5b4fc' }}>2.4k</span> personas
                     </h2>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 20, padding: '6px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 20, padding: '6px 14px' }}>
                     <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
                     <span style={{ color: 'rgba(165,180,252,0.8)', fontSize: 12, fontWeight: 600 }}>🪙 {points}</span>
                   </div>
                 </div>
 
-                {/* Profile grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: '16px' }}>
+                {/* Single-column profile list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   {MOCK_PROFILES.map(p => (
-                    <div key={p.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 18, padding: '18px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, position: 'relative' }}>
-                      {/* Online dot */}
-                      <div style={{ position: 'absolute', top: 14, right: 14, width: 8, height: 8, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 8px #4ade80' }} />
-                      {/* Avatar */}
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: p.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
-                        {p.initials}
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      {/* Camera photo */}
+                      <div style={{ width: 64, height: 64, borderRadius: 16, overflow: 'hidden', flexShrink: 0, position: 'relative', background: '#0e0e2e' }}>
+                        {profilePhoto ? (
+                          <img
+                            src={profilePhoto}
+                            alt=""
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', filter: `hue-rotate(${p.hue}deg) saturate(1.1)` }}
+                          />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.15)' }}>
+                            <Video size={22} color="rgba(165,180,252,0.4)" />
+                          </div>
+                        )}
+                        {/* Live badge */}
+                        <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 6, padding: '2px 5px', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 5px #4ade80' }} />
+                          <span style={{ color: 'white', fontSize: 8, fontWeight: 700, letterSpacing: '0.04em' }}>EN VIVO</span>
+                        </div>
                       </div>
+
                       {/* Info */}
-                      <div style={{ textAlign: 'center' }}>
-                        <p style={{ color: 'white', fontSize: 13, fontWeight: 600, margin: '0 0 3px' }}>
-                          {p.flag} {p.age} años
-                        </p>
-                        <span style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, letterSpacing: '0.04em' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                          <span style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>{p.flag} {p.age} años</span>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
+                        </div>
+                        <span style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
                           {p.tag}
                         </span>
                       </div>
-                      {/* Connect button */}
+
+                      {/* Connect */}
                       <button
                         onClick={() => { setActiveTab('chat'); handleNext(); }}
-                        style={{ width: '100%', padding: '8px 0', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 10, color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer', boxShadow: '0 0 14px rgba(99,102,241,0.35)', letterSpacing: '0.04em' }}
+                        style={{ flexShrink: 0, padding: '9px 16px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 0 16px rgba(99,102,241,0.4)' }}
                       >
                         Conectar
                       </button>
