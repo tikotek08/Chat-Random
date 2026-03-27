@@ -29,6 +29,19 @@ const DEFAULT_RTC_CONFIG: RTCConfiguration = {
 
 const REGIONS = ['Global', 'América Latina', 'Norteamérica', 'Europa', 'Asia', 'Medio Oriente'];
 
+const MOCK_PROFILES = [
+  { id: 1,  initials: 'MR', gradient: 'linear-gradient(135deg,#4f46e5,#7c3aed)', flag: '🇲🇽', age: 24, tag: 'Música' },
+  { id: 2,  initials: 'AS', gradient: 'linear-gradient(135deg,#0ea5e9,#6366f1)', flag: '🇦🇷', age: 21, tag: 'Viajes' },
+  { id: 3,  initials: 'LG', gradient: 'linear-gradient(135deg,#ec4899,#8b5cf6)', flag: '🇪🇸', age: 27, tag: 'Arte' },
+  { id: 4,  initials: 'KP', gradient: 'linear-gradient(135deg,#f59e0b,#ef4444)', flag: '🇺🇸', age: 22, tag: 'Gaming' },
+  { id: 5,  initials: 'DM', gradient: 'linear-gradient(135deg,#10b981,#0ea5e9)', flag: '🇧🇷', age: 25, tag: 'Cine' },
+  { id: 6,  initials: 'RV', gradient: 'linear-gradient(135deg,#8b5cf6,#ec4899)', flag: '🇨🇴', age: 19, tag: 'Deportes' },
+  { id: 7,  initials: 'NF', gradient: 'linear-gradient(135deg,#f97316,#eab308)', flag: '🇫🇷', age: 30, tag: 'Tecnología' },
+  { id: 8,  initials: 'CH', gradient: 'linear-gradient(135deg,#06b6d4,#3b82f6)', flag: '🇯🇵', age: 23, tag: 'Anime' },
+  { id: 9,  initials: 'SB', gradient: 'linear-gradient(135deg,#14b8a6,#8b5cf6)', flag: '🇮🇹', age: 28, tag: 'Moda' },
+  { id: 10, initials: 'TW', gradient: 'linear-gradient(135deg,#6366f1,#0ea5e9)', flag: '🇨🇦', age: 26, tag: 'Fotografía' },
+];
+
 export default function VideoChatApp() {
   // ── App state ─────────────────────────────────────────────
   const [appView, setAppView] = useState<'home' | 'chat'>('home');
@@ -661,33 +674,50 @@ export default function VideoChatApp() {
 
             {/* ── INICIO TAB ── */}
             {activeTab === 'home' && (
-              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 20 }}>
-                <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 800, color: 'white', boxShadow: '0 0 40px rgba(99,102,241,0.45)' }}>
-                  VA
+              <div style={{ height: '100%', overflowY: 'auto' }}>
+                {/* Header */}
+                <div style={{ padding: '20px 20px 14px', background: 'rgba(7,7,26,0.88)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 2px' }}>En línea ahora</p>
+                    <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>
+                      <span style={{ color: '#a5b4fc' }}>2.4k</span> personas
+                    </h2>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 20, padding: '6px 12px' }}>
+                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
+                    <span style={{ color: 'rgba(165,180,252,0.8)', fontSize: 12, fontWeight: 600 }}>🪙 {points}</span>
+                  </div>
                 </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 4px' }}>Bienvenido a</p>
-                  <h2 style={{ fontFamily: 'Georgia, serif', color: 'white', fontSize: 18, fontWeight: 400, letterSpacing: '0.18em', textTransform: 'uppercase', margin: 0 }}>The Velvet Aperture</h2>
-                </div>
-                {/* Stats */}
-                <div style={{ display: 'flex', gap: 12, width: '100%' }}>
-                  {[
-                    { label: 'En línea', value: '2.4k', icon: '🟢' },
-                    { label: 'Tus puntos', value: `${points}`, icon: '🪙' },
-                  ].map(s => (
-                    <div key={s.label} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '16px 12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
-                      <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>{s.value}</div>
-                      <div style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, marginTop: 2 }}>{s.label}</div>
+
+                {/* Profile grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: '16px' }}>
+                  {MOCK_PROFILES.map(p => (
+                    <div key={p.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 18, padding: '18px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, position: 'relative' }}>
+                      {/* Online dot */}
+                      <div style={{ position: 'absolute', top: 14, right: 14, width: 8, height: 8, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 8px #4ade80' }} />
+                      {/* Avatar */}
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: p.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+                        {p.initials}
+                      </div>
+                      {/* Info */}
+                      <div style={{ textAlign: 'center' }}>
+                        <p style={{ color: 'white', fontSize: 13, fontWeight: 600, margin: '0 0 3px' }}>
+                          {p.flag} {p.age} años
+                        </p>
+                        <span style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, letterSpacing: '0.04em' }}>
+                          {p.tag}
+                        </span>
+                      </div>
+                      {/* Connect button */}
+                      <button
+                        onClick={() => { setActiveTab('chat'); handleNext(); }}
+                        style={{ width: '100%', padding: '8px 0', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 10, color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer', boxShadow: '0 0 14px rgba(99,102,241,0.35)', letterSpacing: '0.04em' }}
+                      >
+                        Conectar
+                      </button>
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={() => setActiveTab('chat')}
-                  style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.45)' }}
-                >
-                  Iniciar Chat
-                </button>
               </div>
             )}
 
