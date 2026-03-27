@@ -709,11 +709,11 @@ export default function VideoChatApp() {
                 </div>
 
                 {/* Single-column profile list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px' }}>
                   {MOCK_PROFILES.map(p => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      {/* Camera photo */}
-                      <div style={{ width: 64, height: 64, borderRadius: 16, overflow: 'hidden', flexShrink: 0, position: 'relative', background: '#0e0e2e' }}>
+                    <div key={p.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 20, overflow: 'hidden' }}>
+                      {/* Large camera photo */}
+                      <div style={{ width: '100%', height: 220, position: 'relative', background: '#0e0e2e' }}>
                         {profilePhoto ? (
                           <img
                             src={profilePhoto}
@@ -721,35 +721,35 @@ export default function VideoChatApp() {
                             style={{ width: '100%', height: '100%', objectFit: 'cover', filter: `hue-rotate(${p.hue}deg) saturate(1.1)` }}
                           />
                         ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.15)' }}>
-                            <Video size={22} color="rgba(165,180,252,0.4)" />
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.08)' }}>
+                            <Video size={36} color="rgba(165,180,252,0.3)" />
                           </div>
                         )}
-                        {/* Live badge */}
-                        <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 6, padding: '2px 5px', display: 'flex', alignItems: 'center', gap: 3 }}>
-                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 5px #4ade80' }} />
-                          <span style={{ color: 'white', fontSize: 8, fontWeight: 700, letterSpacing: '0.04em' }}>EN VIVO</span>
+                        {/* Gradient overlay bottom */}
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(to top, rgba(7,7,26,0.9), transparent)' }} />
+                        {/* Live badge top-left */}
+                        <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
+                          <span style={{ color: 'white', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em' }}>EN VIVO</span>
+                        </div>
+                        {/* Info overlay bottom-left */}
+                        <div style={{ position: 'absolute', bottom: 12, left: 14 }}>
+                          <span style={{ color: 'white', fontSize: 17, fontWeight: 700 }}>{p.flag} {p.age} años</span>
                         </div>
                       </div>
 
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                          <span style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>{p.flag} {p.age} años</span>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
-                        </div>
-                        <span style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
+                      {/* Bottom row: tag + button */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px' }}>
+                        <span style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20 }}>
                           {p.tag}
                         </span>
+                        <button
+                          onClick={() => { setActiveTab('chat'); handleNext(); }}
+                          style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 0 18px rgba(99,102,241,0.4)' }}
+                        >
+                          Conectar
+                        </button>
                       </div>
-
-                      {/* Connect */}
-                      <button
-                        onClick={() => { setActiveTab('chat'); handleNext(); }}
-                        style={{ flexShrink: 0, padding: '9px 16px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 0 16px rgba(99,102,241,0.4)' }}
-                      >
-                        Conectar
-                      </button>
                     </div>
                   ))}
                 </div>
