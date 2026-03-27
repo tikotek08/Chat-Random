@@ -567,79 +567,16 @@ export default function VideoChatApp() {
           transition: 'opacity 0.45s ease, transform 0.45s ease',
           pointerEvents: appView === 'home' ? 'auto' : 'none',
           background: 'linear-gradient(160deg, #07071a 0%, #0e0e2e 55%, #07071a 100%)',
-          overflowY: 'auto',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         }}
       >
-        {/* Top bar */}
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 10,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 20px',
-          background: 'rgba(7,7,26,0.85)',
-          backdropFilter: 'blur(14px)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-        }}>
-          <span style={{ color: '#a5b4fc', fontSize: 14, fontWeight: 600, letterSpacing: '0.04em' }}>
-            🪙 {points} pts
-          </span>
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowPremiumMenu(v => !v)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'rgba(99,102,241,0.12)',
-                border: '1px solid rgba(99,102,241,0.35)',
-                borderRadius: 20, padding: '7px 15px',
-                color: '#a5b4fc', fontSize: 12, fontWeight: 700,
-                cursor: 'pointer', letterSpacing: '0.06em',
-              }}
-            >
-              <Diamond size={13} />
-              PREMIUM
-            </button>
-            {showPremiumMenu && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                background: 'rgba(12,12,38,0.97)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(99,102,241,0.25)',
-                borderRadius: 16, padding: '8px',
-                minWidth: 230, zIndex: 50,
-                boxShadow: '0 12px 40px rgba(0,0,0,0.6), 0 0 30px rgba(99,102,241,0.08)',
-              }}>
-                <div style={{ padding: '5px 10px 10px', color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                  Filtros Exclusivos
-                </div>
-                {premiumItems.map(item => (
-                  <button
-                    key={item.label}
-                    onClick={() => setShowPremiumMenu(false)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', padding: '10px 12px', borderRadius: 10,
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      color: 'white', fontSize: 13, textAlign: 'left',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.15)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span>{item.icon} {item.label}</span>
-                    <span style={{ color: '#818cf8', fontSize: 11, fontWeight: 700 }}>{item.cost}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Hero */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '40px 24px 32px' }}>
+        <div style={{ width: '100%', maxWidth: 340, padding: '0 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
           {/* Logo */}
           <div style={{
             width: 84, height: 84, borderRadius: '50%',
             background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.02em',
+            fontSize: 26, fontWeight: 800, color: 'white',
             boxShadow: '0 0 50px rgba(99,102,241,0.55), 0 0 100px rgba(99,102,241,0.15)',
             marginBottom: 22,
           }}>
@@ -652,115 +589,53 @@ export default function VideoChatApp() {
           }}>
             The Velvet Aperture
           </h1>
-          <p style={{ color: 'rgba(165,180,252,0.6)', fontSize: 14, fontStyle: 'italic', margin: '0 0 34px' }}>
+          <p style={{ color: 'rgba(165,180,252,0.6)', fontSize: 14, fontStyle: 'italic', margin: '0 0 48px' }}>
             Encuentra tu conexión
           </p>
 
-          {/* Preferences card */}
-          <div style={{
-            width: '100%', maxWidth: 380,
-            background: 'rgba(255,255,255,0.035)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 22, padding: '22px 20px',
-            marginBottom: 22,
-          }}>
-            {/* Gender */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
-                Género
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['Todos', 'Hombres', 'Mujeres'].map(g => (
-                  <button
-                    key={g}
-                    onClick={() => setPrefGender(g)}
-                    style={{
-                      flex: 1, padding: '9px 0', borderRadius: 11, fontSize: 13, fontWeight: 500,
-                      border: prefGender === g ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)',
-                      background: prefGender === g ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)',
-                      color: prefGender === g ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
-                      cursor: 'pointer', transition: 'all 0.15s',
-                    }}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Region */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
-                Región
-              </div>
-              <div style={{ position: 'relative' }}>
-                <select
-                  value={prefRegion}
-                  onChange={e => setPrefRegion(e.target.value)}
-                  style={{
-                    width: '100%', padding: '10px 36px 10px 14px',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.09)',
-                    borderRadius: 11, color: 'rgba(255,255,255,0.75)',
-                    fontSize: 13, cursor: 'pointer', appearance: 'none', outline: 'none',
-                  }}
-                >
-                  {REGIONS.map(r => (
-                    <option key={r} value={r} style={{ background: '#1a1a3e' }}>{r}</option>
-                  ))}
-                </select>
-                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', pointerEvents: 'none', fontSize: 11 }}>▾</span>
-              </div>
-            </div>
-
-            {/* Age */}
-            <div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
-                Edad
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['Todos', '18–25', '26–35', '36+'].map(a => (
-                  <button
-                    key={a}
-                    onClick={() => setPrefAge(a)}
-                    style={{
-                      flex: 1, padding: '9px 0', borderRadius: 11, fontSize: 12, fontWeight: 500,
-                      border: prefAge === a ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)',
-                      background: prefAge === a ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)',
-                      color: prefAge === a ? '#a5b4fc' : 'rgba(255,255,255,0.5)',
-                      cursor: 'pointer', transition: 'all 0.15s',
-                    }}
-                  >
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* CTA */}
+          {/* Entrar al Chat */}
           <button
             onClick={handleEnterChat}
             disabled={enteringChat}
             style={{
-              width: '100%', maxWidth: 380,
-              padding: '17px 0',
-              background: enteringChat
-                ? 'rgba(99,102,241,0.35)'
-                : 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+              width: '100%', padding: '17px 0',
+              background: enteringChat ? 'rgba(99,102,241,0.35)' : 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
               border: 'none', borderRadius: 16,
               color: 'white', fontSize: 15, fontWeight: 800,
               letterSpacing: '0.1em', textTransform: 'uppercase',
               cursor: enteringChat ? 'not-allowed' : 'pointer',
               boxShadow: enteringChat ? 'none' : '0 0 35px rgba(99,102,241,0.5), 0 6px 24px rgba(0,0,0,0.4)',
-              transition: 'all 0.2s',
-              marginBottom: 14,
+              transition: 'all 0.2s', marginBottom: 14,
             }}
           >
             {enteringChat ? 'Abriendo cámara...' : 'Entrar al Chat'}
           </button>
 
-          <p style={{ color: 'rgba(255,255,255,0.18)', fontSize: 11 }}>
+          {/* Iniciar sesión con Google */}
+          <button
+            style={{
+              width: '100%', padding: '15px 0',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 16, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.09)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+              <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+            </svg>
+            <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600 }}>
+              Continuar con Google
+            </span>
+          </button>
+
+          <p style={{ color: 'rgba(255,255,255,0.18)', fontSize: 11, marginTop: 24 }}>
             Al entrar aceptas nuestros términos de uso · +18
           </p>
         </div>
