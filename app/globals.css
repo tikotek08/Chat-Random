@@ -115,6 +115,11 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+@keyframes pulse-ring {
+  0%   { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+  100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

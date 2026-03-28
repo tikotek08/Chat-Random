@@ -53,6 +53,7 @@ export default function VideoChatApp() {
   const [enteringChat, setEnteringChat] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'search' | 'profile'>('chat');
   const [profilePhoto, setProfilePhoto] = useState<string>('');
+  const [profileIdx, setProfileIdx] = useState(0);
 
   // ── Chat state ────────────────────────────────────────────
   const [roomId, setRoomId] = useState('');
@@ -693,9 +694,9 @@ export default function VideoChatApp() {
 
             {/* ── INICIO TAB ── */}
             {activeTab === 'home' && (
-              <div style={{ height: '100%', overflowY: 'auto' }}>
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Header */}
-                <div style={{ padding: '20px 20px 14px', background: 'rgba(7,7,26,0.92)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
+                <div style={{ padding: '20px 20px 14px', background: 'rgba(7,7,26,0.92)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                   <div>
                     <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 2px' }}>En línea ahora</p>
                     <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>
@@ -708,51 +709,55 @@ export default function VideoChatApp() {
                   </div>
                 </div>
 
-                {/* Single-column profile list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px' }}>
-                  {MOCK_PROFILES.map(p => (
-                    <div key={p.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 20, overflow: 'hidden' }}>
-                      {/* Large camera photo */}
-                      <div style={{ width: '100%', height: 220, position: 'relative', background: '#0e0e2e' }}>
+                {/* Swipe card */}
+                {(() => {
+                  const p = MOCK_PROFILES[profileIdx];
+                  return (
+                    <div style={{ flex: 1, overflow: 'hidden', padding: '14px 16px 16px' }}>
+                      <div style={{ height: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 26, overflow: 'hidden', position: 'relative' }}>
+                        {/* Photo */}
                         {profilePhoto ? (
-                          <img
-                            src={profilePhoto}
-                            alt=""
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', filter: `hue-rotate(${p.hue}deg) saturate(1.1)` }}
-                          />
+                          <img src={profilePhoto} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: `hue-rotate(${p.hue}deg) saturate(1.15)` }} />
                         ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.08)' }}>
-                            <Video size={36} color="rgba(165,180,252,0.3)" />
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(99,102,241,0.06)' }}>
+                            <Video size={56} color="rgba(165,180,252,0.25)" />
                           </div>
                         )}
-                        {/* Gradient overlay bottom */}
-                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%', background: 'linear-gradient(to top, rgba(7,7,26,0.9), transparent)' }} />
-                        {/* Live badge top-left */}
-                        <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', borderRadius: 8, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
-                          <span style={{ color: 'white', fontSize: 10, fontWeight: 700, letterSpacing: '0.05em' }}>EN VIVO</span>
+                        {/* Gradient overlay */}
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(to top, rgba(7,7,26,0.98) 0%, rgba(7,7,26,0.5) 50%, transparent 100%)' }} />
+                        {/* Live badge */}
+                        <div style={{ position: 'absolute', top: 16, left: 16, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', borderRadius: 10, padding: '5px 11px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 8px #4ade80' }} />
+                          <span style={{ color: 'white', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>EN VIVO</span>
                         </div>
-                        {/* Info overlay bottom-left */}
-                        <div style={{ position: 'absolute', bottom: 12, left: 14 }}>
-                          <span style={{ color: 'white', fontSize: 17, fontWeight: 700 }}>{p.flag} {p.age} años</span>
+                        {/* Counter */}
+                        <div style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', borderRadius: 10, padding: '5px 11px' }}>
+                          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600 }}>{profileIdx + 1} / {MOCK_PROFILES.length}</span>
                         </div>
-                      </div>
-
-                      {/* Bottom row: tag + button */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px' }}>
-                        <span style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20 }}>
-                          {p.tag}
-                        </span>
-                        <button
-                          onClick={() => { setActiveTab('chat'); handleNext(); }}
-                          style={{ padding: '10px 22px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 0 18px rgba(99,102,241,0.4)' }}
-                        >
-                          Conectar
-                        </button>
+                        {/* Info */}
+                        <div style={{ position: 'absolute', bottom: 90, left: 20 }}>
+                          <div style={{ color: 'white', fontSize: 28, fontWeight: 800, marginBottom: 8 }}>{p.flag} {p.age} años</div>
+                          <span style={{ background: 'rgba(99,102,241,0.28)', border: '1px solid rgba(99,102,241,0.5)', color: '#a5b4fc', fontSize: 13, fontWeight: 600, padding: '5px 14px', borderRadius: 20 }}>{p.tag}</span>
+                        </div>
+                        {/* Action buttons */}
+                        <div style={{ position: 'absolute', bottom: 18, left: 18, right: 18, display: 'flex', gap: 10 }}>
+                          <button
+                            onClick={() => setProfileIdx(i => (i + 1) % MOCK_PROFILES.length)}
+                            style={{ flex: 1, padding: '15px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 18, color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer', backdropFilter: 'blur(10px)' }}
+                          >
+                            Siguiente →
+                          </button>
+                          <button
+                            onClick={() => { setActiveTab('chat'); handleNext(); }}
+                            style={{ flex: 1, padding: '15px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 18, color: 'white', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.55)' }}
+                          >
+                            Conectar
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -789,43 +794,57 @@ export default function VideoChatApp() {
                   </div>
                 </div>
               </div>
-              {/* Status */}
-              <div style={{ background: 'rgba(7,7,26,0.7)', padding: '4px 24px', textAlign: 'center', fontSize: 11, color: 'rgba(165,180,252,0.5)', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{status}</div>
-              {/* Remote video */}
+              {/* Video area – remote fullscreen + local PiP */}
               <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a' }}>
-                <video ref={remoteVideoRef} autoPlay playsInline style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'none' : 'block' }} />
-                <img ref={remoteImgRef} alt="" style={{ transform: 'scaleX(-1)', width: '100%', height: '100%', objectFit: 'cover', display: relayMode ? 'block' : 'none' }} />
+                {/* Remote video – fills entire area */}
+                <video ref={remoteVideoRef} autoPlay playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: relayMode ? 'none' : 'block' }} />
+                <img ref={remoteImgRef} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: relayMode ? 'block' : 'none' }} />
+
+                {/* Searching overlay with pulsing rings */}
                 {searching && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,7,26,0.82)' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, boxShadow: '0 0 30px rgba(99,102,241,0.5)' }}>🔍</div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(165,180,252,0.8)' }}>Buscando a alguien...</div>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(7,7,26,0.93)', zIndex: 10 }}>
+                    <div style={{ textAlign: 'center', position: 'relative' }}>
+                      {[0, 1, 2].map(i => (
+                        <div key={i} style={{ position: 'absolute', top: '50%', left: '50%', width: 64, height: 64, borderRadius: '50%', border: '2px solid rgba(99,102,241,0.55)', animation: `pulse-ring 2.2s ease-out ${i * 0.73}s infinite` }} />
+                      ))}
+                      <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 22px', fontSize: 28, boxShadow: '0 0 40px rgba(99,102,241,0.65)', position: 'relative', zIndex: 1 }}>🔍</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(165,180,252,0.9)', position: 'relative', zIndex: 1 }}>Buscando a alguien...</div>
+                      <div style={{ fontSize: 11, color: 'rgba(165,180,252,0.4)', marginTop: 8, position: 'relative', zIndex: 1 }}>{status}</div>
                     </div>
                   </div>
                 )}
-                <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>Extraño</span>
-              </div>
-              {/* Local video */}
-              <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#07071a', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
-                <video ref={localVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-                <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>Tú</span>
-                <div style={{ position: 'absolute', bottom: 96, left: 0, right: 0, maxHeight: 112, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none' }}>
+
+                {/* Extraño label */}
+                {!searching && <span style={{ position: 'absolute', top: 10, left: 12, background: 'rgba(7,7,26,0.65)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(165,180,252,0.9)', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, zIndex: 5 }}>Extraño</span>}
+
+                {/* Local video PiP */}
+                <div style={{ position: 'absolute', top: 12, right: 12, width: 92, height: 134, borderRadius: 16, overflow: 'hidden', border: '2px solid rgba(99,102,241,0.45)', boxShadow: '0 6px 28px rgba(0,0,0,0.75)', zIndex: 20 }}>
+                  <video ref={localVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65), transparent)', padding: '10px 0 5px', textAlign: 'center' }}>
+                    <span style={{ color: 'white', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>TÚ</span>
+                  </div>
+                </div>
+
+                {/* Messages overlay */}
+                <div style={{ position: 'absolute', bottom: 108, left: 0, right: 0, maxHeight: 150, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none', zIndex: 15 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{messagesList}</div>
                   <div ref={messagesEndRef} />
                 </div>
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(7,7,26,0.7)', backdropFilter: 'blur(14px)', borderTop: '1px solid rgba(99,102,241,0.15)' }}>
-                  <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+
+                {/* Floating controls */}
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(7,7,26,0.96) 0%, rgba(7,7,26,0.5) 65%, transparent 100%)', zIndex: 20, paddingTop: 44 }}>
+                  <div style={{ padding: '0 16px 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyPress={handleKeyPress} placeholder={searching ? 'Esperando conexión...' : 'Escribe un mensaje...'} disabled={searching}
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(99,102,241,0.25)', color: 'white', borderRadius: 24, padding: '11px 16px', fontSize: 14, outline: 'none', opacity: searching ? 0.4 : 1 }} />
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: 'white', borderRadius: 24, padding: '11px 16px', fontSize: 14, outline: 'none', opacity: searching ? 0.4 : 1 }} />
                     <button onClick={handleSendMessage} style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: 'white', border: 'none', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 0 16px rgba(99,102,241,0.5)' }}>
                       <Send size={18} />
                     </button>
                   </div>
-                  <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10 }}>
-                    <button onClick={handleStop} style={{ background: 'rgba(239,68,68,0.85)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 14, padding: '11px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 18px rgba(239,68,68,0.35)' }}>
+                  <div style={{ padding: '0 16px 18px', display: 'flex', gap: 10 }}>
+                    <button onClick={handleStop} style={{ background: 'rgba(239,68,68,0.85)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 14, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 18px rgba(239,68,68,0.35)' }}>
                       <Square size={22} fill="white" color="white" />
                     </button>
-                    <button onClick={handleNext} style={{ flex: 1, background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '0.06em', padding: '11px', cursor: 'pointer', boxShadow: '0 0 22px rgba(99,102,241,0.45)' }}>
+                    <button onClick={handleNext} style={{ flex: 1, background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, letterSpacing: '0.06em', padding: '12px', cursor: 'pointer', boxShadow: '0 0 22px rgba(99,102,241,0.45)' }}>
                       Siguiente
                     </button>
                   </div>
