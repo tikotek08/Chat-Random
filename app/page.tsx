@@ -54,6 +54,8 @@ export default function VideoChatApp() {
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'search' | 'profile'>('chat');
   const [profilePhoto, setProfilePhoto] = useState<string>('');
   const [profileIdx, setProfileIdx] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const activeTabRef = useRef(activeTab);
 
   // ── Chat state ────────────────────────────────────────────
   const [roomId, setRoomId] = useState('');
@@ -102,6 +104,12 @@ export default function VideoChatApp() {
       window.visualViewport?.removeEventListener('scroll', update);
     };
   }, []);
+
+  // ── Sync activeTab ref (for use inside stale closures) ───
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  // ── Clear unread badge when viewing Chat tab ───────────
+  useEffect(() => { if (activeTab === 'chat') setUnreadCount(0); }, [activeTab]);
 
   // ── Messages scroll ───────────────────────────────────────
   useEffect(() => {
@@ -244,6 +252,7 @@ export default function VideoChatApp() {
           ...prev,
           { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, sender: 'stranger', text },
         ]);
+        if (activeTabRef.current !== 'chat') setUnreadCount(prev => prev + 1);
       };
       dc.onclose = () => {
         if (dataChannelRef.current === dc) dataChannelRef.current = null;
@@ -404,6 +413,7 @@ export default function VideoChatApp() {
         const text = String(msg.text ?? '').trim();
         if (!text) return;
         setMessages(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, sender: 'stranger', text }]);
+        if (activeTabRef.current !== 'chat') setUnreadCount(prev => prev + 1);
         return;
       }
       const pc = pcRef.current;
@@ -611,7 +621,7 @@ export default function VideoChatApp() {
             background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 26, fontWeight: 800, color: 'white',
-            boxShadow: '0 0 50px rgba(99,102,241,0.55), 0 0 100px rgba(99,102,241,0.15)',
+            animation: 'logo-pulse 3s ease-in-out infinite',
             marginBottom: 22,
           }}>
             VA
@@ -696,16 +706,24 @@ export default function VideoChatApp() {
             {activeTab === 'home' && (
               <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {/* Header */}
-                <div style={{ padding: '20px 20px 14px', background: 'rgba(7,7,26,0.92)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                  <div>
-                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 2px' }}>En línea ahora</p>
-                    <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>
-                      <span style={{ color: '#a5b4fc' }}>2.4k</span> personas
-                    </h2>
+                <div style={{ background: 'rgba(7,7,26,0.92)', backdropFilter: 'blur(14px)', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+                  <div style={{ padding: '20px 20px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', margin: '0 0 2px' }}>En línea ahora</p>
+                      <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>
+                        <span style={{ color: '#a5b4fc' }}>2.4k</span> personas
+                      </h2>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 20, padding: '6px 14px', marginBottom: 6 }}>
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
+                        <span style={{ color: 'rgba(165,180,252,0.8)', fontSize: 12, fontWeight: 600 }}>🪙 {points}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 20, padding: '6px 14px' }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
-                    <span style={{ color: 'rgba(165,180,252,0.8)', fontSize: 12, fontWeight: 600 }}>🪙 {points}</span>
+                  {/* Points progress bar */}
+                  <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', margin: '0 20px 14px' }}>
+                    <div style={{ height: '100%', width: `${(points / 540) * 100}%`, background: points > 100 ? 'linear-gradient(90deg,#4f46e5,#7c3aed)' : 'linear-gradient(90deg,#ef4444,#f97316)', borderRadius: 2, transition: 'width 1s ease' }} />
                   </div>
                 </div>
 
@@ -948,8 +966,13 @@ export default function VideoChatApp() {
                     transition: 'color 0.2s',
                   }}
                 >
-                  <div style={{ opacity: active ? 1 : 0.6, filter: active ? 'drop-shadow(0 0 6px rgba(165,180,252,0.6))' : 'none', transition: 'all 0.2s' }}>
+                  <div style={{ opacity: active ? 1 : 0.6, filter: active ? 'drop-shadow(0 0 6px rgba(165,180,252,0.6))' : 'none', transition: 'all 0.2s', position: 'relative' }}>
                     {tab.icon}
+                    {tab.id === 'chat' && unreadCount > 0 && (
+                      <div style={{ position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', animation: 'badge-pop 0.3s ease-out' }}>
+                        <span style={{ color: 'white', fontSize: 9, fontWeight: 800 }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                      </div>
+                    )}
                   </div>
                   <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, letterSpacing: '0.04em' }}>{tab.label}</span>
                   {active && <div style={{ position: 'absolute', bottom: 0, width: 28, height: 2, background: 'linear-gradient(90deg,#4f46e5,#7c3aed)', borderRadius: 2 }} />}
