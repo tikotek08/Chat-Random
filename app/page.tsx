@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { Send, Square, Diamond, Home, Video, Search, User } from 'lucide-react';
 
 interface Message {
@@ -41,6 +42,8 @@ const MOCK_PROFILES = [
 ];
 
 export default function VideoChatApp() {
+  const { data: session } = useSession();
+
   // ── App state ─────────────────────────────────────────────
   const [appView, setAppView] = useState<'home' | 'chat'>('home');
   const [chatSessionId, setChatSessionId] = useState(0);
@@ -657,6 +660,7 @@ export default function VideoChatApp() {
 
           {/* Iniciar sesión con Google */}
           <button
+            onClick={() => session ? signOut() : signIn('google')}
             style={{
               width: '100%', padding: '15px 0',
               background: 'rgba(255,255,255,0.05)',
@@ -675,7 +679,7 @@ export default function VideoChatApp() {
               <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
             </svg>
             <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600 }}>
-              Continuar con Google
+              {session ? `Conectado como ${session.user?.name?.split(' ')[0]}` : 'Continuar con Google'}
             </span>
           </button>
 
@@ -916,11 +920,15 @@ export default function VideoChatApp() {
                 <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 28px' }}>Perfil</h2>
                 {/* Avatar */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
-                  <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', border: '2px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                    <User size={32} color="rgba(165,180,252,0.7)" />
-                  </div>
-                  <p style={{ color: 'white', fontWeight: 600, fontSize: 16, margin: '0 0 4px' }}>Anónimo</p>
-                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 13, margin: 0 }}>Sin cuenta vinculada</p>
+                  {session?.user?.image ? (
+                    <img src={session.user.image} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '3px solid rgba(99,102,241,0.6)', marginBottom: 12, objectFit: 'cover', boxShadow: '0 0 24px rgba(99,102,241,0.4)' }} />
+                  ) : (
+                    <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', border: '2px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                      <User size={36} color="rgba(165,180,252,0.7)" />
+                    </div>
+                  )}
+                  <p style={{ color: 'white', fontWeight: 700, fontSize: 18, margin: '0 0 4px' }}>{session?.user?.name ?? 'Anónimo'}</p>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 13, margin: 0 }}>{session?.user?.email ?? 'Sin cuenta vinculada'}</p>
                 </div>
                 {/* Stats card */}
                 <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: '4px 0', marginBottom: 20 }}>
@@ -935,11 +943,23 @@ export default function VideoChatApp() {
                     </div>
                   ))}
                 </div>
-                {/* Google link */}
-                <button style={{ width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}>
-                  <svg width="16" height="16" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.017 17.64 11.71 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
-                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 600 }}>Vincular cuenta de Google</span>
-                </button>
+                {/* Auth button */}
+                {session ? (
+                  <button
+                    onClick={() => signOut()}
+                    style={{ width: '100%', padding: '14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
+                  >
+                    <span style={{ color: 'rgba(239,68,68,0.8)', fontSize: 14, fontWeight: 600 }}>Cerrar sesión</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => signIn('google')}
+                    style={{ width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.017 17.64 11.71 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+                    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 600 }}>Vincular cuenta de Google</span>
+                  </button>
+                )}
               </div>
             )}
 
