@@ -509,9 +509,15 @@ export default function VideoChatApp() {
   // ── Flip camera ───────────────────────────────────────────
   const handleFlipCamera = async () => {
     const newFacing = facingMode === 'user' ? 'environment' : 'user';
+
+    // Stop existing video track first — required on most mobile browsers
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(t => t.stop());
+    }
+
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: newFacing } },
+        video: { facingMode: newFacing },
         audio: false,
       });
       const newVideoTrack = newStream.getVideoTracks()[0];
@@ -525,15 +531,33 @@ export default function VideoChatApp() {
 
       // Swap track in local stream
       if (localStreamRef.current) {
-        const oldTrack = localStreamRef.current.getVideoTracks()[0];
-        if (oldTrack) { localStreamRef.current.removeTrack(oldTrack); oldTrack.stop(); }
+        localStreamRef.current.getVideoTracks().forEach(t => localStreamRef.current!.removeTrack(t));
         localStreamRef.current.addTrack(newVideoTrack);
       }
 
       if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
       setFacingMode(newFacing);
     } catch {
-      alert('No se pudo cambiar la cámara. Este dispositivo puede que no tenga cámara trasera.');
+      // Fallback: restart full stream with new facing mode
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        if (pcRef.current) {
+          const sender = pcRef.current.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) await sender.replaceTrack(newVideoTrack);
+        }
+        if (localStreamRef.current) {
+          localStreamRef.current.getVideoTracks().forEach(t => localStreamRef.current!.removeTrack(t));
+          localStreamRef.current.addTrack(newVideoTrack);
+        }
+        if (localVideoRef.current) localVideoRef.current.srcObject = localStreamRef.current;
+        setFacingMode(newFacing);
+      } catch {
+        alert('No se pudo cambiar la cámara.');
+      }
     }
   };
 
