@@ -358,6 +358,8 @@ export default function VideoChatApp() {
           remoteVideoRef.current.srcObject = new MediaStream();
         }
         (remoteVideoRef.current.srcObject as MediaStream).addTrack(event.track);
+        // Reassign srcObject so iOS Safari detects the new track
+        remoteVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
         remoteVideoRef.current.play().catch(() => {});
       };
       pc.ondatachannel = (event) => attachDataChannel(event.channel);
@@ -514,6 +516,9 @@ export default function VideoChatApp() {
     if (localStreamRef.current) {
       localStreamRef.current.getVideoTracks().forEach(t => t.stop());
     }
+
+    // iOS needs a moment to fully release the camera hardware
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
