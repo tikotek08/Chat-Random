@@ -292,18 +292,17 @@ export default function VideoChatApp() {
         }, 'image/jpeg', 0.65);
       }, 100);
 
-      // Audio: MediaRecorder → Web Audio API (works on iOS + Android)
+      // Audio: Web Audio API → PCM/WAV → cross-browser compatible (iOS + Android + Chrome)
       const stream = localStreamRef.current;
       if (!stream || !stream.getAudioTracks().length) return;
-      const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
-        .find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } });
-      if (!mimeType) return;
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       const audioCtx = audioCtxRef.current;
       audioCtx.resume().catch(() => {});
       audioNextTimeRef.current = audioCtx.currentTime;
+
+      // Receiver: decodeAudioData works for WAV on all browsers including iOS
       audioHandlerRef.current = async (payload: ArrayBuffer) => {
         try {
           await audioCtx.resume();
@@ -316,36 +315,44 @@ export default function VideoChatApp() {
           if (audioNextTimeRef.current < now + 0.02) audioNextTimeRef.current = now + 0.02;
           src.start(audioNextTimeRef.current);
           audioNextTimeRef.current += audioBuf.duration;
-        } catch {
-          // Fallback for mp4 audio (iOS sender → Chrome/Android receiver)
-          try {
-            const blob = new Blob([payload]);
-            const url = URL.createObjectURL(blob);
-            const a = new Audio(url);
-            a.play().catch(() => {});
-            a.onended = () => URL.revokeObjectURL(url);
-          } catch {}
-        }
+        } catch {}
       };
+
+      // Sender: capture PCM via ScriptProcessor, encode as WAV (~42ms chunks)
+      const buildWAV = (pcm: Int16Array, rate: number): ArrayBuffer => {
+        const buf = new ArrayBuffer(44 + pcm.byteLength);
+        const v = new DataView(buf);
+        const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+        w(0, 'RIFF'); v.setUint32(4, 36 + pcm.byteLength, true);
+        w(8, 'WAVE'); w(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+        v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+        w(36, 'data'); v.setUint32(40, pcm.byteLength, true);
+        new Int16Array(buf, 44).set(pcm);
+        return buf;
+      };
+
       const audioStream = new MediaStream(stream.getAudioTracks());
-      const recorder = new MediaRecorder(audioStream, { mimeType });
-      audioRecorderRef.current = recorder;
-      let initSeg: Uint8Array | null = null;
-      recorder.ondataavailable = async (e) => {
-        if (e.data.size === 0) return;
-        const chunk = new Uint8Array(await e.data.arrayBuffer());
-        if (!initSeg) { initSeg = chunk; return; }
-        const combined = new Uint8Array(initSeg.byteLength + chunk.byteLength);
-        combined.set(initSeg, 0); combined.set(chunk, initSeg.byteLength);
+      const source = audioCtx.createMediaStreamSource(audioStream);
+      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+      processor.onaudioprocess = (e) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-        const msg = new Uint8Array(1 + combined.byteLength);
+        const samples = e.inputBuffer.getChannelData(0);
+        const pcm = new Int16Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+          pcm[i] = Math.max(-32768, Math.min(32767, Math.round(samples[i] * 32767)));
+        }
+        const wav = buildWAV(pcm, audioCtx.sampleRate);
+        const msg = new Uint8Array(1 + wav.byteLength);
         msg[0] = 1;
-        msg.set(combined, 1);
-        wsRef.current.send(msg.buffer);
+        msg.set(new Uint8Array(wav), 1);
+        wsRef.current!.send(msg.buffer);
       };
-      // mp4 needs larger chunks (500ms) to be decodable cross-browser; webm works at 40ms
-      const timeslice = mimeType.includes('mp4') ? 500 : 40;
-      recorder.start(timeslice);
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      // Store cleanup handle
+      (audioRecorderRef as any).current = { stop: () => { try { processor.disconnect(); source.disconnect(); } catch {} } };
     };
 
     const activateRelay = () => {
