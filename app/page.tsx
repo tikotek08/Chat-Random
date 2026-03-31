@@ -316,7 +316,16 @@ export default function VideoChatApp() {
           if (audioNextTimeRef.current < now + 0.02) audioNextTimeRef.current = now + 0.02;
           src.start(audioNextTimeRef.current);
           audioNextTimeRef.current += audioBuf.duration;
-        } catch {}
+        } catch {
+          // Fallback for mp4 audio (iOS sender → Chrome/Android receiver)
+          try {
+            const blob = new Blob([payload]);
+            const url = URL.createObjectURL(blob);
+            const a = new Audio(url);
+            a.play().catch(() => {});
+            a.onended = () => URL.revokeObjectURL(url);
+          } catch {}
+        }
       };
       const audioStream = new MediaStream(stream.getAudioTracks());
       const recorder = new MediaRecorder(audioStream, { mimeType });
@@ -334,7 +343,9 @@ export default function VideoChatApp() {
         msg.set(combined, 1);
         wsRef.current.send(msg.buffer);
       };
-      recorder.start(40);
+      // mp4 needs larger chunks (500ms) to be decodable cross-browser; webm works at 40ms
+      const timeslice = mimeType.includes('mp4') ? 500 : 40;
+      recorder.start(timeslice);
     };
 
     const activateRelay = () => {
