@@ -903,13 +903,18 @@ export default function VideoChatApp() {
                 {/* Local video PiP */}
                 <div style={{ position: 'absolute', top: 12, right: 12, width: 92, height: 134, borderRadius: 16, overflow: 'hidden', border: '2px solid rgba(99,102,241,0.45)', boxShadow: '0 6px 28px rgba(0,0,0,0.75)', zIndex: 20 }}>
                   <video ref={localVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.75), transparent)', padding: '10px 0 5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 8, paddingRight: 4 }}>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65), transparent)', paddingTop: 10, paddingBottom: 5, textAlign: 'center' }}>
                     <span style={{ color: 'white', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>TÚ</span>
-                    <button onClick={handleFlipCamera} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', color: 'rgba(255,255,255,0.8)' }}>
-                      <SwitchCamera size={14} />
-                    </button>
                   </div>
                 </div>
+
+                {/* Flip camera button — below PiP, easy to tap */}
+                <button
+                  onClick={handleFlipCamera}
+                  style={{ position: 'absolute', top: 154, right: 12, width: 44, height: 44, borderRadius: '50%', background: 'rgba(7,7,26,0.75)', backdropFilter: 'blur(8px)', border: '1px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.5)' }}
+                >
+                  <SwitchCamera size={20} color="#a5b4fc" />
+                </button>
 
                 {/* Messages overlay */}
                 <div style={{ position: 'absolute', bottom: 108, left: 0, right: 0, maxHeight: 150, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none', zIndex: 15 }}>
