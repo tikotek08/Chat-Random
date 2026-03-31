@@ -370,6 +370,19 @@ export default function VideoChatApp() {
       const pc = new RTCPeerConnection(rtcConfigRef.current);
       pcRef.current = pc;
       for (const track of stream.getTracks()) pc.addTrack(track, stream);
+
+      // Prefer H.264 for video — Safari has hardware acceleration for it
+      try {
+        for (const transceiver of pc.getTransceivers()) {
+          if (transceiver.sender.track?.kind === 'video') {
+            const codecs = RTCRtpReceiver.getCapabilities('video')?.codecs ?? [];
+            const h264 = codecs.filter(c => c.mimeType === 'video/H264');
+            const rest = codecs.filter(c => c.mimeType !== 'video/H264');
+            if (h264.length > 0) transceiver.setCodecPreferences([...h264, ...rest]);
+          }
+        }
+      } catch {}
+
       pc.ontrack = (event) => {
         if (!remoteVideoRef.current) return;
         if (!(remoteVideoRef.current.srcObject instanceof MediaStream)) {
@@ -379,6 +392,10 @@ export default function VideoChatApp() {
         // Reassign srcObject so iOS Safari detects the new track
         remoteVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
         remoteVideoRef.current.play().catch(() => {});
+        // Zero playout delay — show frames as soon as they arrive
+        if (typeof (event.receiver as any).playoutDelayHint !== 'undefined') {
+          (event.receiver as any).playoutDelayHint = 0;
+        }
       };
       pc.ondatachannel = (event) => attachDataChannel(event.channel);
       if (!polite) { try { attachDataChannel(pc.createDataChannel('chat')); } catch {} }
@@ -395,7 +412,7 @@ export default function VideoChatApp() {
         }
         activateRelay();
       };
-      const iceTimer = window.setTimeout(switchToRelay, 5000);
+      const iceTimer = window.setTimeout(switchToRelay, 12000);
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
         if (st === 'connected') { clearTimeout(iceTimer); setSearching(false); setStatus('Conectado'); }
