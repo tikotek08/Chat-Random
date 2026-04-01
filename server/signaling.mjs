@@ -89,21 +89,29 @@ function joinRoom(ws, roomId) {
   ws.roomId = roomId
 }
 
+function filtersCompatible(a, b) {
+  const f1 = a.filters ?? { gender: 'Todos', region: 'Global', age: 'Todos' }
+  const f2 = b.filters ?? { gender: 'Todos', region: 'Global', age: 'Todos' }
+  const genderOk = f1.gender === 'Todos' || f2.gender === 'Todos' || f1.gender === f2.gender
+  const regionOk = f1.region === 'Global' || f2.region === 'Global' || f1.region === f2.region
+  const ageOk    = f1.age    === 'Todos'  || f2.age    === 'Todos'  || f1.age    === f2.age
+  return genderOk && regionOk && ageOk
+}
+
 function findMatch(ws) {
   leaveRoom(ws)
   removeFromQueue(ws)
 
-  // Find next available peer
-  let matched = null
-  while (waitingQueue.length > 0) {
-    const candidate = waitingQueue.shift()
-    if (candidate.readyState === candidate.OPEN) {
-      matched = candidate
-      break
-    }
+  // Find first compatible peer in queue
+  let matchedIdx = -1
+  for (let i = 0; i < waitingQueue.length; i++) {
+    const candidate = waitingQueue[i]
+    if (candidate.readyState !== candidate.OPEN) continue
+    if (filtersCompatible(ws, candidate)) { matchedIdx = i; break }
   }
 
-  if (matched) {
+  if (matchedIdx !== -1) {
+    const matched = waitingQueue.splice(matchedIdx, 1)[0]
     const roomId = randomRoomId()
     joinRoom(ws, roomId)
     joinRoom(matched, roomId)
@@ -137,6 +145,11 @@ wss.on('connection', (ws) => {
     if (!data || typeof data !== 'object') return
 
     if (data.type === 'find-match') {
+      ws.filters = {
+        gender: data.gender ?? 'Todos',
+        region: data.region ?? 'Global',
+        age:    data.age    ?? 'Todos',
+      }
       findMatch(ws)
       return
     }

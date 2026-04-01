@@ -11,7 +11,7 @@ interface Message {
 }
 
 type SignalMessage =
-  | { type: 'find-match' }
+  | { type: 'find-match'; gender?: string; region?: string; age?: string }
   | { type: 'waiting' }
   | { type: 'matched'; roomId: string; polite: boolean }
   | { type: 'peer-left' }
@@ -30,15 +30,19 @@ const DEFAULT_RTC_CONFIG: RTCConfiguration = {
 
 const REGIONS = ['Global', 'América Latina', 'Norteamérica', 'Europa', 'Asia', 'Medio Oriente'];
 
+const ALL_INTERESTS = ['Música', 'Viajes', 'Arte', 'Gaming', 'Cine', 'Deportes', 'Tecnología', 'Anime', 'Cocina', 'Moda', 'Fotografía', 'Baile'];
+
+const BANNED_WORDS = ['puta', 'puto', 'mierda', 'cabrón', 'cabron', 'pendejo', 'chinga', 'verga', 'culero', 'mamón', 'fuck', 'shit', 'bitch', 'asshole', 'cunt', 'nigger', 'faggot'];
+
 const MOCK_PROFILES = [
-  { id: 1,  flag: '🇲🇽', age: 24, tag: 'Música',      hue: 0   },
-  { id: 2,  flag: '🇦🇷', age: 21, tag: 'Viajes',      hue: 40  },
-  { id: 3,  flag: '🇪🇸', age: 27, tag: 'Arte',        hue: 80  },
-  { id: 4,  flag: '🇺🇸', age: 22, tag: 'Gaming',      hue: 130 },
-  { id: 5,  flag: '🇧🇷', age: 25, tag: 'Cine',        hue: 180 },
-  { id: 6,  flag: '🇨🇴', age: 19, tag: 'Deportes',    hue: 220 },
-  { id: 7,  flag: '🇫🇷', age: 30, tag: 'Tecnología',  hue: 270 },
-  { id: 8,  flag: '🇯🇵', age: 23, tag: 'Anime',       hue: 310 },
+  { id: 1,  flag: '🇲🇽', age: 24, tag: 'Música',     hue: 0,   rating: 4.8, reviews: 34, bio: 'Amante de la música indie y el café. Siempre con audífonos puestos 🎧',      comments: ['Muy buena onda, platicamos horas', 'Super divertido/a', 'Volvería a hablar con esta persona'] },
+  { id: 2,  flag: '🇦🇷', age: 21, tag: 'Viajes',     hue: 40,  rating: 4.5, reviews: 21, bio: 'Mochilera empedernida. Ya visité 12 países y voy por más ✈️',                comments: ['Tiene historias increíbles de viajes', 'Muy entretenida la conv', 'Aprendí mucho hablando con ella'] },
+  { id: 3,  flag: '🇪🇸', age: 27, tag: 'Arte',       hue: 80,  rating: 4.9, reviews: 58, bio: 'Ilustrador/a digital. El arte es mi forma de ver el mundo 🎨',               comments: ['Persona muy creativa y auténtica', 'Me mostró su portfolio, genial', 'Muy buena charla'] },
+  { id: 4,  flag: '🇺🇸', age: 22, tag: 'Gaming',     hue: 130, rating: 4.2, reviews: 17, bio: 'Pro gamer wannabe 😅 Fortnite, Valorant y mucho café por las noches 🎮',      comments: ['Buen jugador, muy positivo', 'Hablamos de videojuegos toda la sesión', 'Tranquilo y divertido'] },
+  { id: 5,  flag: '🇧🇷', age: 25, tag: 'Cine',       hue: 180, rating: 4.7, reviews: 43, bio: 'Cinéfilo/a de corazón. Nolan y Lynch son mis dioses 🎬',                     comments: ['Sabe muchísimo de cine', 'Conversación intelectual muy buena', 'Me recomendó películas increíbles'] },
+  { id: 6,  flag: '🇨🇴', age: 19, tag: 'Deportes',   hue: 220, rating: 4.3, reviews: 12, bio: 'Atleta aficionado. Gym, fútbol y naturaleza son mi vida 🏋️',                 comments: ['Muy energético y motivador', 'Buena vibra', 'Conversación corta pero amena'] },
+  { id: 7,  flag: '🇫🇷', age: 30, tag: 'Tecnología', hue: 270, rating: 4.6, reviews: 29, bio: 'Dev full-stack de día, gamer de noche. Open source lover 💻',                comments: ['Habla de tech sin hacerlo aburrido', 'Muy inteligente', 'Gran conversación sobre el futuro de la IA'] },
+  { id: 8,  flag: '🇯🇵', age: 23, tag: 'Anime',      hue: 310, rating: 4.4, reviews: 38, bio: 'Otaku orgulloso/a. Mangaka en mis sueños, oficinista en la realidad 🌸',     comments: ['Conoce todo sobre anime', 'Super amable y detallista', 'Una de las mejores conversaciones que he tenido'] },
 ];
 
 export default function VideoChatApp() {
@@ -53,6 +57,9 @@ export default function VideoChatApp() {
   const [prefGender, setPrefGender] = useState('Todos');
   const [prefRegion, setPrefRegion] = useState('Global');
   const [prefAge, setPrefAge] = useState('Todos');
+  const prefGenderRef = useRef('Todos');
+  const prefRegionRef = useRef('Global');
+  const prefAgeRef    = useRef('Todos');
   const [enteringChat, setEnteringChat] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'search' | 'profile'>('chat');
   const [profilePhoto, setProfilePhoto] = useState<string>('');
@@ -60,6 +67,26 @@ export default function VideoChatApp() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const activeTabRef = useRef(activeTab);
+
+  // ── Profile editing ───────────────────────────────────────
+  const [bio, setBio] = useState('');
+  const [userAge, setUserAge] = useState('');
+  const [interests, setInterests] = useState<string[]>([]);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState<typeof MOCK_PROFILES[0] | null>(null);
+  const [customPhoto, setCustomPhoto] = useState('');
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Ratings ───────────────────────────────────────────────
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [pendingRatingAction, setPendingRatingAction] = useState<'next' | 'stop' | null>(null);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingsGiven, setRatingsGiven] = useState<{stars: number, comment: string, date: string}[]>([]);
+  const [ratingComment, setRatingComment] = useState('');
+
+  // ── Chat moderation ───────────────────────────────────────
+  const [blockedWarning, setBlockedWarning] = useState(false);
 
   // ── Chat state ────────────────────────────────────────────
   const [roomId, setRoomId] = useState('');
@@ -93,6 +120,16 @@ export default function VideoChatApp() {
   const audioNextTimeRef = useRef(0);
   const pointsIntervalRef = useRef<number | null>(null);
 
+  // ── Load profile + ratings from localStorage ─────────────
+  useEffect(() => {
+    setBio(localStorage.getItem('va_bio') ?? '');
+    setUserAge(localStorage.getItem('va_age') ?? '');
+    setDisplayName(localStorage.getItem('va_name') ?? '');
+    setCustomPhoto(localStorage.getItem('va_photo') ?? '');
+    try { setInterests(JSON.parse(localStorage.getItem('va_interests') ?? '[]')); } catch {}
+    try { setRatingsGiven(JSON.parse(localStorage.getItem('va_ratings_given') ?? '[]')); } catch {}
+  }, []);
+
   // ── visualViewport (mobile keyboard) ─────────────────────
   useEffect(() => {
     const update = () => {
@@ -111,6 +148,11 @@ export default function VideoChatApp() {
 
   // ── Sync activeTab ref (for use inside stale closures) ───
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  // ── Sync filter refs (used in _doNext outside WebSocket effect) ──
+  useEffect(() => { prefGenderRef.current = prefGender; }, [prefGender]);
+  useEffect(() => { prefRegionRef.current = prefRegion; }, [prefRegion]);
+  useEffect(() => { prefAgeRef.current    = prefAge;    }, [prefAge]);
 
   // ── Clear unread badge when viewing Chat tab ───────────
   useEffect(() => { if (activeTab === 'chat') setUnreadCount(0); }, [activeTab]);
@@ -443,7 +485,7 @@ export default function VideoChatApp() {
         if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
           setTimeout(() => {
             if (!stopped && wsRef.current?.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({ type: 'find-match' }));
+              wsRef.current.send(JSON.stringify({ type: 'find-match', gender: prefGender, region: prefRegion, age: prefAge }));
             }
           }, 1500);
         }
@@ -496,7 +538,7 @@ export default function VideoChatApp() {
         const ws = new WebSocket(getSignalingUrl());
         ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
-        ws.onopen = () => { setStatus('Buscando a alguien...'); ws.send(JSON.stringify({ type: 'find-match' })); };
+        ws.onopen = () => { setStatus('Buscando a alguien...'); ws.send(JSON.stringify({ type: 'find-match', gender: prefGender, region: prefRegion, age: prefAge })); };
         ws.onerror = () => setStatus('Error: no se pudo conectar al servidor');
         ws.onmessage = async (event) => {
           try {
@@ -618,7 +660,7 @@ export default function VideoChatApp() {
     }
   };
 
-  const handleStop = () => {
+  const doStop = () => {
     if (pointsIntervalRef.current) { clearInterval(pointsIntervalRef.current); pointsIntervalRef.current = null; }
     setShowNoPointsModal(false);
     setRelayMode(false);
@@ -627,11 +669,21 @@ export default function VideoChatApp() {
     setMessages([]);
     setRoomId('');
     setStatus('Conectando al servidor...');
-    setChatSessionId(0); // triggers effect cleanup (closes WS, stops stream, closes PC)
+    setChatSessionId(0);
     setAppView('home');
   };
 
-  const handleNext = () => {
+  const handleStop = () => {
+    if (!searching) {
+      setPendingRatingAction('stop');
+      setRatingValue(0);
+      setShowRatingModal(true);
+    } else {
+      doStop();
+    }
+  };
+
+  const _doNext = () => {
     if (pcRef.current) { try { pcRef.current.close(); } catch {} pcRef.current = null; }
     if (dataChannelRef.current) { try { dataChannelRef.current.close(); } catch {} dataChannelRef.current = null; }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
@@ -646,13 +698,45 @@ export default function VideoChatApp() {
     setMessages([]);
     setRoomId('');
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'find-match' }));
+      wsRef.current.send(JSON.stringify({ type: 'find-match', gender: prefGenderRef.current, region: prefRegionRef.current, age: prefAgeRef.current }));
     }
+  };
+
+  const handleNext = () => {
+    if (!searching) {
+      setPendingRatingAction('next');
+      setRatingValue(0);
+      setShowRatingModal(true);
+    } else {
+      _doNext();
+    }
+  };
+
+  const handleRatingSubmit = (stars: number) => {
+    if (stars > 0) {
+      const entry = { stars, comment: ratingComment.trim(), date: new Date().toISOString() };
+      const updated = [entry, ...ratingsGiven];
+      setRatingsGiven(updated);
+      localStorage.setItem('va_ratings_given', JSON.stringify(updated));
+    }
+    setShowRatingModal(false);
+    setRatingValue(0);
+    setRatingComment('');
+    if (pendingRatingAction === 'next') _doNext();
+    else if (pendingRatingAction === 'stop') doStop();
+    setPendingRatingAction(null);
   };
 
   const handleSendMessage = () => {
     const text = inputValue.trim();
     if (!text) return;
+    const lower = text.toLowerCase();
+    if (BANNED_WORDS.some(w => lower.includes(w))) {
+      setBlockedWarning(true);
+      setTimeout(() => setBlockedWarning(false), 2500);
+      setInputValue('');
+      return;
+    }
     setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
     const dc = dataChannelRef.current;
     if (dc?.readyState === 'open') { try { dc.send(text); } catch {} }
@@ -858,16 +942,22 @@ export default function VideoChatApp() {
                           <span style={{ background: 'rgba(99,102,241,0.28)', border: '1px solid rgba(99,102,241,0.5)', color: '#a5b4fc', fontSize: 13, fontWeight: 600, padding: '5px 14px', borderRadius: 20 }}>{p.tag}</span>
                         </div>
                         {/* Action buttons */}
-                        <div style={{ position: 'absolute', bottom: 18, left: 18, right: 18, display: 'flex', gap: 10 }}>
+                        <div style={{ position: 'absolute', bottom: 18, left: 18, right: 18, display: 'flex', gap: 8 }}>
                           <button
                             onClick={() => setProfileIdx(i => (i + 1) % MOCK_PROFILES.length)}
-                            style={{ flex: 1, padding: '15px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 18, color: 'white', fontWeight: 700, fontSize: 15, cursor: 'pointer', backdropFilter: 'blur(10px)' }}
+                            style={{ width: 48, height: 48, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14, color: 'white', fontWeight: 700, fontSize: 18, cursor: 'pointer', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                           >
-                            Siguiente →
+                            →
+                          </button>
+                          <button
+                            onClick={() => setSelectedProfile(p)}
+                            style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 14, color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer', backdropFilter: 'blur(10px)' }}
+                          >
+                            Ver perfil
                           </button>
                           <button
                             onClick={() => { setActiveTab('chat'); handleNext(); }}
-                            style={{ flex: 1, padding: '15px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 18, color: 'white', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.55)' }}
+                            style={{ flex: 1, padding: '14px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 14, color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.55)' }}
                           >
                             Conectar
                           </button>
@@ -1019,47 +1109,179 @@ export default function VideoChatApp() {
 
             {/* ── PERFIL TAB ── */}
             {activeTab === 'profile' && (
-              <div style={{ height: '100%', overflowY: 'auto', padding: '32px 24px' }}>
+              <div style={{ height: '100%', overflowY: 'auto', padding: '28px 20px 32px' }}>
                 <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>Tu cuenta</p>
-                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 28px' }}>Perfil</h2>
-                {/* Avatar */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 28 }}>
-                  {session?.user?.image ? (
-                    <img src={session.user.image} alt="" style={{ width: 80, height: 80, borderRadius: '50%', border: '3px solid rgba(99,102,241,0.6)', marginBottom: 12, objectFit: 'cover', boxShadow: '0 0 24px rgba(99,102,241,0.4)' }} />
-                  ) : (
-                    <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', border: '2px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                      <User size={36} color="rgba(165,180,252,0.7)" />
+                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 24px' }}>Perfil</h2>
+
+                {/* Avatar + name */}
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                      const result = ev.target?.result as string;
+                      setCustomPhoto(result);
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24, gap: 14 }}>
+                  {/* Tappable photo */}
+                  <div
+                    onClick={() => photoInputRef.current?.click()}
+                    style={{ position: 'relative', cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    {customPhoto || session?.user?.image ? (
+                      <img
+                        src={customPhoto || session!.user!.image!}
+                        alt=""
+                        style={{ width: 90, height: 90, borderRadius: '50%', border: '3px solid rgba(99,102,241,0.6)', objectFit: 'cover', boxShadow: '0 0 28px rgba(99,102,241,0.4)', display: 'block' }}
+                      />
+                    ) : (
+                      <div style={{ width: 90, height: 90, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', border: '2px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <User size={36} color="rgba(165,180,252,0.7)" />
+                      </div>
+                    )}
+                    {/* Camera overlay */}
+                    <div style={{ position: 'absolute', bottom: 2, right: 2, width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
+                      <span style={{ fontSize: 14 }}>📷</span>
                     </div>
-                  )}
-                  <p style={{ color: 'white', fontWeight: 700, fontSize: 18, margin: '0 0 4px' }}>{session?.user?.name ?? 'Anónimo'}</p>
-                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 13, margin: 0 }}>{session?.user?.email ?? 'Sin cuenta vinculada'}</p>
+                  </div>
+
+                  {/* Editable name */}
+                  <div style={{ width: '100%' }}>
+                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px', textAlign: 'center' }}>Nombre</p>
+                    <input
+                      type="text"
+                      value={displayName || session?.user?.name || ''}
+                      onChange={e => setDisplayName(e.target.value)}
+                      placeholder={session?.user?.name ?? 'Tu nombre'}
+                      maxLength={40}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, color: 'white', fontSize: 15, fontWeight: 600, padding: '10px 14px', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}
+                    />
+                  </div>
+
+                  {/* Email + rating */}
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: 'rgba(165,180,252,0.4)', fontSize: 12, margin: '0 0 4px' }}>{session?.user?.email ?? 'Sin cuenta vinculada'}</p>
+                    {ratingsGiven.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <span style={{ color: '#fbbf24', fontSize: 13 }}>{'★'.repeat(Math.round(ratingsGiven.reduce((a,b)=>a+b.stars,0)/ratingsGiven.length))}</span>
+                        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>{(ratingsGiven.reduce((a,b)=>a+b.stars,0)/ratingsGiven.length).toFixed(1)} · {ratingsGiven.length} cal.</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {/* Stats card */}
-                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: '4px 0', marginBottom: 20 }}>
+
+                {/* Stats */}
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '4px 0', marginBottom: 20 }}>
                   {[
                     { label: 'Puntos disponibles', value: `${points} 🪙` },
-                    { label: 'Sesiones hoy', value: '1' },
+                    { label: 'Calificaciones dadas', value: `${ratingsGiven.length}` },
                     { label: 'Plan', value: 'Gratuito' },
                   ].map((item, i, arr) => (
-                    <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14 }}>{item.label}</span>
-                      <span style={{ color: '#a5b4fc', fontWeight: 600, fontSize: 14 }}>{item.value}</span>
+                    <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>{item.label}</span>
+                      <span style={{ color: '#a5b4fc', fontWeight: 600, fontSize: 13 }}>{item.value}</span>
                     </div>
                   ))}
                 </div>
+
+                {/* Bio */}
+                <div style={{ marginBottom: 18 }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px' }}>Bio</p>
+                  <textarea
+                    value={bio}
+                    onChange={e => setBio(e.target.value)}
+                    placeholder="Cuéntanos algo de ti..."
+                    maxLength={120}
+                    rows={3}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, color: 'white', fontSize: 14, padding: '11px 14px', resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                  <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11, textAlign: 'right', margin: '4px 0 0' }}>{bio.length}/120</p>
+                </div>
+
+                {/* Age */}
+                <div style={{ marginBottom: 18 }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 8px' }}>Edad</p>
+                  <input
+                    type="number"
+                    value={userAge}
+                    onChange={e => setUserAge(e.target.value)}
+                    placeholder="Tu edad"
+                    min={18} max={99}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, color: 'white', fontSize: 14, padding: '11px 14px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                {/* Interests */}
+                <div style={{ marginBottom: 24 }}>
+                  <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px' }}>Intereses</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {ALL_INTERESTS.map(interest => {
+                      const active = interests.includes(interest);
+                      return (
+                        <button
+                          key={interest}
+                          onClick={() => setInterests(prev => active ? prev.filter(i => i !== interest) : [...prev, interest])}
+                          style={{ padding: '7px 14px', borderRadius: 20, fontSize: 13, fontWeight: 500, border: active ? '1px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.09)', background: active ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.03)', color: active ? '#a5b4fc' : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'all 0.15s' }}
+                        >
+                          {interest}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Save button */}
+                <button
+                  onClick={() => {
+                    localStorage.setItem('va_bio', bio);
+                    localStorage.setItem('va_age', userAge);
+                    localStorage.setItem('va_interests', JSON.stringify(interests));
+                    localStorage.setItem('va_name', displayName);
+                    if (customPhoto) localStorage.setItem('va_photo', customPhoto);
+                    setProfileSaved(true);
+                    setTimeout(() => setProfileSaved(false), 2000);
+                  }}
+                  style={{ width: '100%', padding: '14px', background: profileSaved ? 'rgba(74,222,128,0.15)' : 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: profileSaved ? '1px solid rgba(74,222,128,0.4)' : 'none', borderRadius: 14, color: profileSaved ? '#4ade80' : 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer', marginBottom: 12, transition: 'all 0.3s', boxShadow: profileSaved ? 'none' : '0 0 22px rgba(99,102,241,0.35)' }}
+                >
+                  {profileSaved ? '✓ Guardado' : 'Guardar perfil'}
+                </button>
+
+                {/* My reviews */}
+                {ratingsGiven.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px' }}>Mis reseñas ({ratingsGiven.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {ratingsGiven.slice(0, 5).map((r, i) => (
+                        <div key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '12px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: r.comment ? 6 : 0 }}>
+                            <span style={{ color: '#fbbf24', fontSize: 15, letterSpacing: 2 }}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)}</span>
+                            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>
+                              {new Date(r.date).toLocaleDateString('es', { day: 'numeric', month: 'short' })}
+                            </span>
+                          </div>
+                          {r.comment && <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, margin: 0, lineHeight: 1.45 }}>{r.comment}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Auth button */}
                 {session ? (
-                  <button
-                    onClick={() => signOut()}
-                    style={{ width: '100%', padding: '14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
-                  >
+                  <button onClick={() => signOut()} style={{ width: '100%', padding: '13px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', borderRadius: 14, cursor: 'pointer' }}>
                     <span style={{ color: 'rgba(239,68,68,0.8)', fontSize: 14, fontWeight: 600 }}>Cerrar sesión</span>
                   </button>
                 ) : (
-                  <button
-                    onClick={() => signIn('google')}
-                    style={{ width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
-                  >
+                  <button onClick={() => signIn('google')} style={{ width: '100%', padding: '13px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}>
                     <svg width="16" height="16" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.017 17.64 11.71 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
                     <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 600 }}>Vincular cuenta de Google</span>
                   </button>
@@ -1108,6 +1330,119 @@ export default function VideoChatApp() {
         </div>
       </div>
 
+      {/* ════════════════ PROFILE DETAIL MODAL ════════════════ */}
+      {selectedProfile && (
+        <div
+          onClick={() => setSelectedProfile(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 75, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(10px)' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'rgba(10,10,32,0.99)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '26px 26px 0 0', padding: '24px 22px 36px', width: '100%', maxWidth: 448, maxHeight: '85vh', overflowY: 'auto' }}
+          >
+            {/* Handle */}
+            <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 20px' }} />
+
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+              <div style={{ width: 68, height: 68, borderRadius: '50%', background: `linear-gradient(135deg, hsl(${selectedProfile.hue},70%,40%), hsl(${selectedProfile.hue + 40},70%,30%))`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, flexShrink: 0, border: '2px solid rgba(99,102,241,0.4)' }}>
+                {selectedProfile.flag}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: 'white', fontWeight: 800, fontSize: 18 }}>{selectedProfile.age} años</span>
+                  <span style={{ background: 'rgba(99,102,241,0.22)', border: '1px solid rgba(99,102,241,0.5)', color: '#a5b4fc', fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>{selectedProfile.tag}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: '#fbbf24', fontSize: 14 }}>{'★'.repeat(Math.round(selectedProfile.rating))}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{selectedProfile.rating} · {selectedProfile.reviews} reseñas</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bio */}
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px', marginBottom: 20 }}>
+              <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Bio</p>
+              <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 1.5, margin: 0 }}>{selectedProfile.bio}</p>
+            </div>
+
+            {/* Reviews */}
+            <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px' }}>Reseñas recientes</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
+              {selectedProfile.comments.map((comment, i) => (
+                <div key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', gap: 2, marginBottom: 6 }}>
+                    {[1,2,3,4,5].map(s => (
+                      <span key={s} style={{ color: s <= 5 - (i % 2) ? '#fbbf24' : 'rgba(255,255,255,0.2)', fontSize: 13 }}>★</span>
+                    ))}
+                  </div>
+                  <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, margin: 0, lineHeight: 1.45 }}>{comment}</p>
+                  <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11, margin: '6px 0 0' }}>Hace {i + 1} día{i > 0 ? 's' : ''}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Connect button */}
+            <button
+              onClick={() => { setSelectedProfile(null); setActiveTab('chat'); handleNext(); }}
+              style={{ width: '100%', padding: '15px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 16, color: 'white', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 0 28px rgba(99,102,241,0.5)' }}
+            >
+              Conectar con {selectedProfile.flag}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ BLOCKED MESSAGE TOAST ════════════════ */}
+      {blockedWarning && (
+        <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', zIndex: 80, background: 'rgba(239,68,68,0.92)', backdropFilter: 'blur(10px)', borderRadius: 24, padding: '10px 20px', boxShadow: '0 4px 24px rgba(239,68,68,0.4)' }}>
+          <span style={{ color: 'white', fontSize: 13, fontWeight: 600 }}>⚠️ Mensaje bloqueado por contenido inapropiado</span>
+        </div>
+      )}
+
+      {/* ════════════════ RATING MODAL ════════════════ */}
+      {showRatingModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)' }}>
+          <div style={{ background: 'rgba(12,12,38,0.98)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 26, padding: '32px 28px', maxWidth: 300, width: '88%', textAlign: 'center', boxShadow: '0 0 60px rgba(99,102,241,0.2)' }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>⭐</div>
+            <h2 style={{ color: 'white', fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>¿Cómo fue la conversación?</h2>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, margin: '0 0 24px' }}>Califica al extraño</p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 20 }}>
+              {[1,2,3,4,5].map(star => (
+                <button
+                  key={star}
+                  onClick={() => setRatingValue(star)}
+                  style={{ fontSize: 38, background: 'none', border: 'none', cursor: 'pointer', color: star <= ratingValue ? '#fbbf24' : 'rgba(255,255,255,0.2)', transition: 'color 0.15s, transform 0.15s', transform: star <= ratingValue ? 'scale(1.2)' : 'scale(1)', padding: '4px' }}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={ratingComment}
+              onChange={e => setRatingComment(e.target.value)}
+              placeholder="Deja un comentario opcional..."
+              maxLength={200}
+              rows={3}
+              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: 'white', fontSize: 13, padding: '10px 13px', resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 16 }}
+            />
+            <button
+              onClick={() => handleRatingSubmit(ratingValue)}
+              disabled={ratingValue === 0}
+              style={{ width: '100%', padding: '13px', background: ratingValue > 0 ? 'linear-gradient(135deg,#4f46e5,#7c3aed)' : 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 14, color: ratingValue > 0 ? 'white' : 'rgba(255,255,255,0.3)', fontWeight: 800, fontSize: 14, cursor: ratingValue > 0 ? 'pointer' : 'not-allowed', marginBottom: 10, boxShadow: ratingValue > 0 ? '0 0 22px rgba(99,102,241,0.4)' : 'none', transition: 'all 0.2s' }}
+            >
+              Enviar calificación
+            </button>
+            <button
+              onClick={() => handleRatingSubmit(0)}
+              style={{ width: '100%', padding: '11px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 13, cursor: 'pointer' }}
+            >
+              Omitir
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ════════════════ NO-POINTS MODAL ════════════════ */}
       {showNoPointsModal && (
         <div style={{
@@ -1139,7 +1474,7 @@ export default function VideoChatApp() {
                 Recargar Puntos
               </button>
               <button
-                onClick={handleStop}
+                onClick={doStop}
                 style={{
                   padding: '14px', borderRadius: 14,
                   background: 'rgba(255,255,255,0.06)',
