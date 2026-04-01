@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { Send, Square, Diamond, Home, Video, Search, User, SwitchCamera } from 'lucide-react';
+import type { ScheduledSlot } from '@/lib/supabase';
 
 interface Message {
   id: string;
@@ -10,10 +11,22 @@ interface Message {
   text: string;
 }
 
+type StrangerProfile = { name: string; email: string; photo: string }
+
+type Connection = {
+  id: string
+  stranger_name: string | null
+  stranger_email: string | null
+  stranger_photo: string | null
+  note: string | null
+  created_at: string
+}
+
 type SignalMessage =
   | { type: 'find-match'; gender?: string; region?: string; age?: string }
+  | { type: 'set-profile'; name: string; email: string; photo: string }
   | { type: 'waiting' }
-  | { type: 'matched'; roomId: string; polite: boolean }
+  | { type: 'matched'; roomId: string; polite: boolean; stranger?: StrangerProfile | null }
   | { type: 'peer-left' }
   | { type: 'offer'; sdp: RTCSessionDescriptionInit }
   | { type: 'answer'; sdp: RTCSessionDescriptionInit }
@@ -51,9 +64,19 @@ export default function VideoChatApp() {
   // ── App state ─────────────────────────────────────────────
   const [appView, setAppView] = useState<'home' | 'chat'>('home');
   const [chatSessionId, setChatSessionId] = useState(0);
-  const [points, setPoints] = useState(540);
+  const [points, setPoints] = useState(540); // overridden by localStorage on mount
   const [showNoPointsModal, setShowNoPointsModal] = useState(false);
   const [showPremiumMenu, setShowPremiumMenu] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
+
+  // ── Schedule state ────────────────────────────────────────
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleNote, setScheduleNote] = useState('');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [mySlots, setMySlots] = useState<ScheduledSlot[]>([]);
   const [prefGender, setPrefGender] = useState('Todos');
   const [prefRegion, setPrefRegion] = useState('Global');
   const [prefAge, setPrefAge] = useState('Todos');
@@ -84,6 +107,14 @@ export default function VideoChatApp() {
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingsGiven, setRatingsGiven] = useState<{stars: number, comment: string, date: string}[]>([]);
   const [ratingComment, setRatingComment] = useState('');
+
+  // ── Connections ───────────────────────────────────────────
+  const [strangerProfile, setStrangerProfile] = useState<StrangerProfile | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [connectionNote, setConnectionNote] = useState('');
+  const [connectionSaving, setConnectionSaving] = useState(false);
+  const [myConnections, setMyConnections] = useState<Connection[]>([]);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // ── Chat moderation ───────────────────────────────────────
   const [blockedWarning, setBlockedWarning] = useState(false);
@@ -119,6 +150,32 @@ export default function VideoChatApp() {
   const audioHandlerRef = useRef<((payload: ArrayBuffer) => void) | null>(null);
   const audioNextTimeRef = useRef(0);
   const pointsIntervalRef = useRef<number | null>(null);
+  const myProfileRef = useRef<StrangerProfile>({ name: 'Anónimo', email: '', photo: '' });
+
+  // ── Load points from localStorage + handle post-payment redirect ──
+  useEffect(() => {
+    const saved = localStorage.getItem('va_points');
+    if (saved !== null) setPoints(parseInt(saved, 10));
+
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get('payment');
+    const addedPoints = parseInt(params.get('points') ?? '0', 10);
+    if (payment === 'success' && addedPoints > 0) {
+      setPoints(prev => {
+        const next = prev + addedPoints;
+        localStorage.setItem('va_points', String(next));
+        return next;
+      });
+    }
+    if (payment) window.history.replaceState({}, '', '/');
+  }, []);
+
+  // ── Persist points to localStorage on change ───────────────
+  useEffect(() => {
+    localStorage.setItem('va_points', String(points));
+  }, [points]);
+
+  const savePoints = (_pts: number) => {}; // kept for doStop compatibility
 
   // ── Load profile + ratings from localStorage ─────────────
   useEffect(() => {
@@ -153,6 +210,15 @@ export default function VideoChatApp() {
   useEffect(() => { prefGenderRef.current = prefGender; }, [prefGender]);
   useEffect(() => { prefRegionRef.current = prefRegion; }, [prefRegion]);
   useEffect(() => { prefAgeRef.current    = prefAge;    }, [prefAge]);
+
+  // ── Sync profile ref (used in WebSocket onopen) ──────────
+  useEffect(() => {
+    myProfileRef.current = {
+      name:  session?.user?.name ?? displayName ?? 'Anónimo',
+      email: session?.user?.email ?? '',
+      photo: session?.user?.image ?? customPhoto ?? '',
+    };
+  }, [session, displayName, customPhoto]);
 
   // ── Clear unread badge when viewing Chat tab ───────────
   useEffect(() => { if (activeTab === 'chat') setUnreadCount(0); }, [activeTab]);
@@ -276,6 +342,7 @@ export default function VideoChatApp() {
         dataChannelRef.current = null;
       }
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      setStrangerProfile(null);
     };
 
     const attachDataChannel = (dc: RTCDataChannel) => {
@@ -477,7 +544,9 @@ export default function VideoChatApp() {
         setSearching(true); setStatus('Buscando a alguien...'); setRoomId(''); setMessages([]); cleanupPc(); return;
       }
       if (msg.type === 'matched') {
-        setRoomId(msg.roomId); setStatus('Conectando video...'); setMessages([]); await setupPc(msg.polite); return;
+        setRoomId(msg.roomId); setStatus('Conectando video...'); setMessages([]);
+        setStrangerProfile(msg.stranger ?? null);
+        await setupPc(msg.polite); return;
       }
       if (msg.type === 'peer-left') {
         cleanupPc(); stopRelayCapture(); setRelayMode(false); setSearching(true); setRoomId(''); setMessages([]);
@@ -538,7 +607,11 @@ export default function VideoChatApp() {
         const ws = new WebSocket(getSignalingUrl());
         ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
-        ws.onopen = () => { setStatus('Buscando a alguien...'); ws.send(JSON.stringify({ type: 'find-match', gender: prefGender, region: prefRegion, age: prefAge })); };
+        ws.onopen = () => {
+          setStatus('Buscando a alguien...');
+          ws.send(JSON.stringify({ type: 'set-profile', ...myProfileRef.current }));
+          ws.send(JSON.stringify({ type: 'find-match', gender: prefGender, region: prefRegion, age: prefAge }));
+        };
         ws.onerror = () => setStatus('Error: no se pudo conectar al servidor');
         ws.onmessage = async (event) => {
           try {
@@ -660,8 +733,116 @@ export default function VideoChatApp() {
     }
   };
 
+  // ── Load & save connections ───────────────────────────────
+  const loadConnections = async () => {
+    if (!session?.user?.email) return;
+    try {
+      const res = await fetch('/api/connections');
+      const data = await res.json();
+      if (data.connections) setMyConnections(data.connections);
+    } catch {}
+  };
+
+  useEffect(() => { loadConnections(); }, [session]);
+
+  const handleSaveConnection = async () => {
+    if (!strangerProfile) return;
+    if (myConnections.length >= 5 && !session?.user?.email) { setShowUpgradeModal(true); return; }
+    if (myConnections.length >= 5) { setShowUpgradeModal(true); return; }
+    setConnectionSaving(true);
+    try {
+      const res = await fetch('/api/connections', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          stranger_name:  strangerProfile.name,
+          stranger_email: strangerProfile.email,
+          stranger_photo: strangerProfile.photo,
+          room_id: roomId,
+          note: connectionNote,
+        }),
+      });
+      if (res.ok) {
+        await loadConnections();
+        setShowSaveModal(false);
+        setConnectionNote('');
+      }
+    } catch {} finally { setConnectionSaving(false); }
+  };
+
+  const handleDeleteConnection = async (id: string) => {
+    try {
+      await fetch('/api/connections', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setMyConnections(prev => prev.filter(c => c.id !== id));
+    } catch {}
+  };
+
+  // ── Load scheduled slots ──────────────────────────────────
+  const loadSlots = async () => {
+    if (!session?.user?.email) return;
+    try {
+      const res = await fetch('/api/schedule');
+      const data = await res.json();
+      if (data.slots) setMySlots(data.slots);
+    } catch {}
+  };
+
+  useEffect(() => { loadSlots(); }, [session]);
+
+  const handleCreateSlot = async () => {
+    if (!scheduleDate || !scheduleTime) return;
+    setScheduleSaving(true);
+    try {
+      const scheduled_at = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ scheduled_at, note: scheduleNote }),
+      });
+      if (res.ok) {
+        await loadSlots();
+        setShowScheduleModal(false);
+        setScheduleDate(''); setScheduleTime(''); setScheduleNote('');
+      }
+    } catch {} finally { setScheduleSaving(false); }
+  };
+
+  const handleCancelSlot = async (id: string) => {
+    try {
+      await fetch('/api/schedule', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setMySlots(prev => prev.filter(s => s.id !== id));
+    } catch {}
+  };
+
+  const handleBuyPoints = async (pkg: string) => {
+    if (!session) { signIn('google'); return; }
+    setPaymentLoading(pkg);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pkg }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch {
+      alert('Error al procesar el pago. Intenta de nuevo.');
+    } finally {
+      setPaymentLoading(null);
+    }
+  };
+
   const doStop = () => {
     if (pointsIntervalRef.current) { clearInterval(pointsIntervalRef.current); pointsIntervalRef.current = null; }
+    setPoints(prev => { savePoints(prev); return prev; });
     setShowNoPointsModal(false);
     setRelayMode(false);
     setDcReady(false);
@@ -1041,6 +1222,24 @@ export default function VideoChatApp() {
                   <SwitchCamera size={20} color="#a5b4fc" />
                 </button>
 
+                {/* Save connection button — visible when connected and stranger has a profile */}
+                {!searching && strangerProfile && (
+                  <button
+                    onClick={() => setShowSaveModal(true)}
+                    style={{
+                      position: 'absolute', top: 12, left: 12, zIndex: 20,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 14px', borderRadius: 20,
+                      background: 'rgba(99,102,241,0.85)', backdropFilter: 'blur(8px)',
+                      border: '1px solid rgba(165,180,252,0.4)',
+                      color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      boxShadow: '0 2px 12px rgba(99,102,241,0.4)',
+                    }}
+                  >
+                    <span>💾</span> Guardar conexión
+                  </button>
+                )}
+
                 {/* Messages overlay */}
                 <div style={{ position: 'absolute', bottom: 108, left: 0, right: 0, maxHeight: 150, overflowY: 'auto', padding: '0 16px', pointerEvents: 'none', zIndex: 15 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{messagesList}</div>
@@ -1255,6 +1454,112 @@ export default function VideoChatApp() {
                   {profileSaved ? '✓ Guardado' : 'Guardar perfil'}
                 </button>
 
+                {/* My connections */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: 0 }}>
+                      Mis conexiones {myConnections.length > 0 && `(${myConnections.length}/5)`}
+                    </p>
+                    {!session && <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Inicia sesión para guardar</span>}
+                  </div>
+                  {myConnections.length === 0 ? (
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '20px', textAlign: 'center' }}>
+                      <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, margin: 0 }}>
+                        Conecta con alguien y guárdalos con 💾 durante la llamada
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {myConnections.map(c => (
+                        <div key={c.id} style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                          {c.stranger_photo ? (
+                            <img src={c.stranger_photo} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} referrerPolicy="no-referrer" />
+                          ) : (
+                            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>👤</div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: 'white', fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.stranger_name ?? 'Anónimo'}
+                            </div>
+                            {c.note && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.note}</div>}
+                            <div style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, marginTop: 2 }}>
+                              {new Date(c.created_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+                            <button
+                              onClick={() => { setScheduleNote(`Sesión con ${c.stranger_name ?? 'mi conexión'}`); setShowScheduleModal(true); }}
+                              style={{ padding: '6px 10px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 10, color: '#a5b4fc', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Agendar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteConnection(c.id)}
+                              style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, color: 'rgba(239,68,68,0.7)', fontSize: 11, cursor: 'pointer' }}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Scheduled sessions */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: 0 }}>Sesiones agendadas</p>
+                    {session && (
+                      <button
+                        onClick={() => setShowScheduleModal(true)}
+                        style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 20, padding: '5px 12px', color: '#a5b4fc', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        + Agendar
+                      </button>
+                    )}
+                  </div>
+                  {mySlots.length === 0 ? (
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '20px', textAlign: 'center' }}>
+                      <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, margin: 0 }}>No tienes sesiones agendadas</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {mySlots.map(slot => {
+                        const date = new Date(slot.scheduled_at);
+                        const now = new Date();
+                        const diffMs = date.getTime() - now.getTime();
+                        const diffH = Math.floor(diffMs / 3600000);
+                        const diffM = Math.floor((diffMs % 3600000) / 60000);
+                        const isNow = diffMs >= 0 && diffMs < 10 * 60000;
+                        return (
+                          <div key={slot.id} style={{ background: isNow ? 'rgba(74,222,128,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isNow ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                            <div>
+                              <div style={{ color: 'white', fontWeight: 600, fontSize: 14 }}>
+                                {date.toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' })} · {date.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                              {slot.note && <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, marginTop: 2 }}>{slot.note}</div>}
+                              <div style={{ color: isNow ? '#4ade80' : 'rgba(165,180,252,0.5)', fontSize: 11, marginTop: 4, fontWeight: 600 }}>
+                                {isNow ? '🟢 ¡Es ahora! Entra al chat' : diffMs > 0 ? `En ${diffH}h ${diffM}m` : 'Pasada'}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {isNow && (
+                                <button onClick={() => { setActiveTab('chat'); handleNext(); }} style={{ padding: '7px 12px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', borderRadius: 10, color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                                  Conectar
+                                </button>
+                              )}
+                              <button onClick={() => handleCancelSlot(slot.id)} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, color: 'rgba(239,68,68,0.7)', fontSize: 11, cursor: 'pointer' }}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* My reviews */}
                 {ratingsGiven.length > 0 && (
                   <div style={{ marginBottom: 20 }}>
@@ -1443,6 +1748,253 @@ export default function VideoChatApp() {
         </div>
       )}
 
+      {/* ════════════════ SAVE CONNECTION MODAL ════════════════ */}
+      {showSaveModal && strangerProfile && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)',
+        }} onClick={() => setShowSaveModal(false)}>
+          <div style={{
+            background: 'rgba(12,12,38,0.98)',
+            border: '1px solid rgba(99,102,241,0.25)',
+            borderRadius: '26px 26px 0 0', padding: '28px 24px 40px',
+            width: '100%', maxWidth: 480,
+            boxShadow: '0 -20px 80px rgba(99,102,241,0.15)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 22px' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+              {strangerProfile.photo ? (
+                <img src={strangerProfile.photo} alt="" referrerPolicy="no-referrer" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.4)' }} />
+              ) : (
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>👤</div>
+              )}
+              <div>
+                <div style={{ color: 'white', fontWeight: 800, fontSize: 17 }}>{strangerProfile.name}</div>
+                <div style={{ color: 'rgba(165,180,252,0.5)', fontSize: 13 }}>Guardar como conexión</div>
+              </div>
+            </div>
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Nota (opcional)</label>
+            <textarea
+              value={connectionNote}
+              onChange={e => setConnectionNote(e.target.value)}
+              placeholder="¿De qué hablaron? ¿Por qué guardarlos?..."
+              rows={3}
+              style={{
+                width: '100%', marginTop: 8, marginBottom: 20, padding: '13px 16px',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 14, color: 'white', fontSize: 14, boxSizing: 'border-box',
+                resize: 'none', fontFamily: 'inherit',
+              }}
+            />
+
+            {!session && (
+              <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 12, padding: '10px 14px', marginBottom: 16, color: 'rgba(251,191,36,0.8)', fontSize: 13 }}>
+                ⚠️ Inicia sesión con Google para guardar conexiones permanentemente.
+              </div>
+            )}
+
+            <button
+              onClick={handleSaveConnection}
+              disabled={connectionSaving}
+              style={{
+                width: '100%', padding: '15px', borderRadius: 16,
+                background: connectionSaving ? 'rgba(99,102,241,0.3)' : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                border: 'none', color: 'white', fontSize: 15, fontWeight: 800,
+                cursor: connectionSaving ? 'not-allowed' : 'pointer',
+                marginBottom: 10, boxShadow: '0 0 25px rgba(99,102,241,0.3)',
+              }}
+            >
+              {connectionSaving ? 'Guardando...' : '💾 Guardar conexión'}
+            </button>
+            <button
+              onClick={() => setShowSaveModal(false)}
+              style={{ width: '100%', padding: '13px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 14, cursor: 'pointer' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ UPGRADE MODAL ════════════════ */}
+      {showUpgradeModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(10px)',
+        }}>
+          <div style={{
+            background: 'rgba(12,12,38,0.98)',
+            border: '1px solid rgba(99,102,241,0.3)',
+            borderRadius: 26, padding: '36px 28px',
+            maxWidth: 300, width: '88%', textAlign: 'center',
+            boxShadow: '0 0 80px rgba(99,102,241,0.2)',
+          }}>
+            <div style={{ fontSize: 52, marginBottom: 14 }}>🔒</div>
+            <h2 style={{ color: 'white', fontSize: 21, fontWeight: 800, margin: '0 0 10px' }}>Límite alcanzado</h2>
+            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14, margin: '0 0 6px', lineHeight: 1.5 }}>
+              El plan gratuito permite hasta <strong style={{ color: 'white' }}>5 conexiones</strong>.
+            </p>
+            <p style={{ color: 'rgba(165,180,252,0.6)', fontSize: 13, margin: '0 0 26px', lineHeight: 1.5 }}>
+              Próximamente: Premium ilimitado.
+            </p>
+            <button
+              onClick={() => setShowUpgradeModal(false)}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 14,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.65)', fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ PAYMENT MODAL ════════════════ */}
+      {showPaymentModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(10px)' }}>
+          <div style={{ background: 'rgba(10,10,32,0.99)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '26px 26px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 448 }}>
+            <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 22px' }} />
+            <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: '0 0 4px', textAlign: 'center' }}>Recargar Puntos</h2>
+            <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 13, textAlign: 'center', margin: '0 0 24px' }}>Elige el paquete que mejor te convenga</p>
+
+            {[
+              { pkg: 'starter', emoji: '🥉', label: '500 Puntos',   price: '$2.99', bonus: null,              popular: false },
+              { pkg: 'popular', emoji: '🥈', label: '1,500 Puntos', price: '$7.99', bonus: '+200 de regalo',  popular: true  },
+              { pkg: 'pro',     emoji: '🥇', label: '5,000 Puntos', price: '$19.99', bonus: '+1,000 de regalo', popular: false },
+            ].map(item => (
+              <button
+                key={item.pkg}
+                onClick={() => handleBuyPoints(item.pkg)}
+                disabled={paymentLoading !== null}
+                style={{
+                  width: '100%', marginBottom: 10, padding: '16px 18px',
+                  background: item.popular ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: item.popular ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 16, cursor: paymentLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  opacity: paymentLoading && paymentLoading !== item.pkg ? 0.5 : 1,
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 26 }}>{item.emoji}</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>{item.label}</div>
+                    {item.bonus && <div style={{ color: '#4ade80', fontSize: 12, fontWeight: 600 }}>{item.bonus}</div>}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  {item.popular && <div style={{ color: '#a5b4fc', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>Popular</div>}
+                  <div style={{ color: paymentLoading === item.pkg ? '#a5b4fc' : 'white', fontWeight: 800, fontSize: 16 }}>
+                    {paymentLoading === item.pkg ? '...' : item.price}
+                  </div>
+                </div>
+              </button>
+            ))}
+
+            <button
+              onClick={() => setShowPaymentModal(false)}
+              style={{ width: '100%', padding: '13px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 14, cursor: 'pointer', marginTop: 4 }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ SCHEDULE MODAL ════════════════ */}
+      {showScheduleModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)',
+        }} onClick={() => setShowScheduleModal(false)}>
+          <div style={{
+            background: 'rgba(12,12,38,0.98)',
+            border: '1px solid rgba(99,102,241,0.25)',
+            borderRadius: '26px 26px 0 0', padding: '28px 24px 40px',
+            width: '100%', maxWidth: 480,
+            boxShadow: '0 -20px 80px rgba(99,102,241,0.15)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 22px' }} />
+            <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: '0 0 20px', textAlign: 'center' }}>Agendar Sesión</h2>
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Fecha</label>
+            <input
+              type="date"
+              value={scheduleDate}
+              onChange={e => setScheduleDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              style={{
+                width: '100%', marginTop: 8, marginBottom: 16, padding: '13px 16px',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 14, color: 'white', fontSize: 15, boxSizing: 'border-box',
+                colorScheme: 'dark',
+              }}
+            />
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Hora</label>
+            <input
+              type="time"
+              value={scheduleTime}
+              onChange={e => setScheduleTime(e.target.value)}
+              style={{
+                width: '100%', marginTop: 8, marginBottom: 16, padding: '13px 16px',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 14, color: 'white', fontSize: 15, boxSizing: 'border-box',
+                colorScheme: 'dark',
+              }}
+            />
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Nota (opcional)</label>
+            <textarea
+              value={scheduleNote}
+              onChange={e => setScheduleNote(e.target.value)}
+              placeholder="Ej: Quiero practicar inglés..."
+              rows={3}
+              style={{
+                width: '100%', marginTop: 8, marginBottom: 20, padding: '13px 16px',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 14, color: 'white', fontSize: 14, boxSizing: 'border-box',
+                resize: 'none', fontFamily: 'inherit',
+              }}
+            />
+
+            <button
+              onClick={handleCreateSlot}
+              disabled={scheduleSaving || !scheduleDate || !scheduleTime}
+              style={{
+                width: '100%', padding: '15px', borderRadius: 16,
+                background: scheduleSaving || !scheduleDate || !scheduleTime
+                  ? 'rgba(99,102,241,0.3)' : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                border: 'none', color: 'white', fontSize: 15, fontWeight: 800,
+                cursor: scheduleSaving || !scheduleDate || !scheduleTime ? 'not-allowed' : 'pointer',
+                marginBottom: 10, boxShadow: '0 0 25px rgba(99,102,241,0.3)',
+              }}
+            >
+              {scheduleSaving ? 'Guardando...' : 'Confirmar Sesión ✓'}
+            </button>
+            <button
+              onClick={() => setShowScheduleModal(false)}
+              style={{
+                width: '100%', padding: '13px', background: 'transparent',
+                border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ════════════════ NO-POINTS MODAL ════════════════ */}
       {showNoPointsModal && (
         <div style={{
@@ -1465,12 +2017,14 @@ export default function VideoChatApp() {
               Ups, te quedaste sin puntos. Recarga para seguir conectando.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button style={{
-                padding: '14px', borderRadius: 14,
-                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                border: 'none', color: 'white', fontSize: 14, fontWeight: 800,
-                cursor: 'pointer', boxShadow: '0 0 25px rgba(99,102,241,0.45)',
-              }}>
+              <button
+                onClick={() => { setShowNoPointsModal(false); setShowPaymentModal(true); }}
+                style={{
+                  padding: '14px', borderRadius: 14,
+                  background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                  border: 'none', color: 'white', fontSize: 14, fontWeight: 800,
+                  cursor: 'pointer', boxShadow: '0 0 25px rgba(99,102,241,0.45)',
+                }}>
                 Recargar Puntos
               </button>
               <button

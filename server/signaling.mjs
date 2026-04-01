@@ -116,9 +116,9 @@ function findMatch(ws) {
     joinRoom(ws, roomId)
     joinRoom(matched, roomId)
     // The peer that was waiting longer is polite (yields on collision)
-    safeSend(matched, { type: 'matched', roomId, polite: true })
+    safeSend(matched, { type: 'matched', roomId, polite: true,  stranger: ws.profile })
     // The new arrival is impolite and makes the first offer
-    safeSend(ws, { type: 'matched', roomId, polite: false })
+    safeSend(ws,      { type: 'matched', roomId, polite: false, stranger: matched.profile })
   } else {
     waitingQueue.push(ws)
     safeSend(ws, { type: 'waiting' })
@@ -127,6 +127,7 @@ function findMatch(ws) {
 
 wss.on('connection', (ws) => {
   ws.roomId = null
+  ws.profile = null
 
   ws.on('message', (raw, isBinary) => {
     // Binary frames = video relay — forward directly to peer
@@ -143,6 +144,15 @@ wss.on('connection', (ws) => {
 
     const data = safeJsonParse(String(raw))
     if (!data || typeof data !== 'object') return
+
+    if (data.type === 'set-profile') {
+      ws.profile = {
+        name:  data.name  ?? 'Anónimo',
+        email: data.email ?? '',
+        photo: data.photo ?? '',
+      }
+      return
+    }
 
     if (data.type === 'find-match') {
       ws.filters = {
