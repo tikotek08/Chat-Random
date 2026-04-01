@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { Send, Square, Diamond, Home, Video, Search, User, SwitchCamera } from 'lucide-react';
-import type { ScheduledSlot } from '@/lib/supabase';
+import type { ScheduledSlot, MeetingInvite } from '@/lib/supabase';
 
 interface Message {
   id: string;
@@ -46,6 +46,18 @@ const REGIONS = ['Global', 'América Latina', 'Norteamérica', 'Europa', 'Asia',
 const ALL_INTERESTS = ['Música', 'Viajes', 'Arte', 'Gaming', 'Cine', 'Deportes', 'Tecnología', 'Anime', 'Cocina', 'Moda', 'Fotografía', 'Baile'];
 
 const BANNED_WORDS = ['puta', 'puto', 'mierda', 'cabrón', 'cabron', 'pendejo', 'chinga', 'verga', 'culero', 'mamón', 'fuck', 'shit', 'bitch', 'asshole', 'cunt', 'nigger', 'faggot'];
+
+// Mock photo tiles per profile (hue + emoji as placeholder visuals)
+const MOCK_PHOTOS: Record<number, { hue: number; emoji: string }[]> = {
+  1: [{ hue: 0, emoji: '🎵' }, { hue: 15, emoji: '☕' }, { hue: 340, emoji: '🎧' }],
+  2: [{ hue: 40, emoji: '✈️' }, { hue: 55, emoji: '🏔️' }, { hue: 25, emoji: '🌍' }, { hue: 50, emoji: '📸' }],
+  3: [{ hue: 80, emoji: '🎨' }, { hue: 95, emoji: '✏️' }, { hue: 70, emoji: '🖼️' }],
+  4: [{ hue: 130, emoji: '🎮' }, { hue: 145, emoji: '🕹️' }],
+  5: [{ hue: 180, emoji: '🎬' }, { hue: 195, emoji: '🎞️' }, { hue: 165, emoji: '🍿' }, { hue: 200, emoji: '📽️' }],
+  6: [{ hue: 220, emoji: '⚽' }, { hue: 235, emoji: '🏋️' }, { hue: 210, emoji: '🏃' }],
+  7: [{ hue: 270, emoji: '💻' }, { hue: 285, emoji: '⚙️' }, { hue: 255, emoji: '🤖' }, { hue: 290, emoji: '🧑‍💻' }],
+  8: [{ hue: 310, emoji: '🌸' }, { hue: 325, emoji: '⛩️' }, { hue: 295, emoji: '📚' }],
+};
 
 const MOCK_PROFILES = [
   { id: 1,  flag: '🇲🇽', age: 24, tag: 'Música',     hue: 0,   rating: 4.8, reviews: 34, bio: 'Amante de la música indie y el café. Siempre con audífonos puestos 🎧',      comments: ['Muy buena onda, platicamos horas', 'Super divertido/a', 'Volvería a hablar con esta persona'] },
@@ -100,6 +112,8 @@ export default function VideoChatApp() {
   const [selectedProfile, setSelectedProfile] = useState<typeof MOCK_PROFILES[0] | null>(null);
   const [customPhoto, setCustomPhoto] = useState('');
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [galleryPhotos, setGalleryPhotos] = useState<string[]>([]);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // ── Ratings ───────────────────────────────────────────────
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -107,6 +121,21 @@ export default function VideoChatApp() {
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingsGiven, setRatingsGiven] = useState<{stars: number, comment: string, date: string}[]>([]);
   const [ratingComment, setRatingComment] = useState('');
+
+  // ── Invites ───────────────────────────────────────────────
+  const [showInviteModal, setShowInviteModal]         = useState(false);
+  const [inviteConnection, setInviteConnection]       = useState<Connection | null>(null);
+  const [inviteDate, setInviteDate]                   = useState('');
+  const [inviteTime, setInviteTime]                   = useState('');
+  const [inviteMessage, setInviteMessage]             = useState('');
+  const [inviteSaving, setInviteSaving]               = useState(false);
+  const [inviteSent, setInviteSent]                   = useState(false);
+  const [pendingInvites, setPendingInvites]           = useState<MeetingInvite[]>([]);
+  const [showAcceptModal, setShowAcceptModal]         = useState(false);
+  const [currentInviteToken, setCurrentInviteToken]   = useState<string | null>(null);
+  const [currentInvite, setCurrentInvite]             = useState<MeetingInvite | null>(null);
+  const [acceptLoading, setAcceptLoading]             = useState(false);
+  const [acceptDone, setAcceptDone]                   = useState<'accepted' | 'declined' | null>(null);
 
   // ── Connections ───────────────────────────────────────────
   const [strangerProfile, setStrangerProfile] = useState<StrangerProfile | null>(null);
@@ -168,6 +197,22 @@ export default function VideoChatApp() {
       });
     }
     if (payment) window.history.replaceState({}, '', '/');
+
+    // Invite token from email link
+    const inviteToken = params.get('invite');
+    if (inviteToken) {
+      setCurrentInviteToken(inviteToken);
+      fetch(`/api/invite/${inviteToken}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.invite?.status === 'pending') {
+            setCurrentInvite(data.invite);
+            setShowAcceptModal(true);
+            setActiveTab('profile');
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // ── Persist points to localStorage on change ───────────────
@@ -185,6 +230,7 @@ export default function VideoChatApp() {
     setCustomPhoto(localStorage.getItem('va_photo') ?? '');
     try { setInterests(JSON.parse(localStorage.getItem('va_interests') ?? '[]')); } catch {}
     try { setRatingsGiven(JSON.parse(localStorage.getItem('va_ratings_given') ?? '[]')); } catch {}
+    try { setGalleryPhotos(JSON.parse(localStorage.getItem('va_gallery') ?? '[]')); } catch {}
   }, []);
 
   // ── visualViewport (mobile keyboard) ─────────────────────
@@ -744,6 +790,7 @@ export default function VideoChatApp() {
   };
 
   useEffect(() => { loadConnections(); }, [session]);
+  useEffect(() => { loadPendingInvites(); }, [session]);
 
   const handleSaveConnection = async () => {
     if (!strangerProfile) return;
@@ -779,6 +826,67 @@ export default function VideoChatApp() {
       });
       setMyConnections(prev => prev.filter(c => c.id !== id));
     } catch {}
+  };
+
+  // ── Invite handlers ──────────────────────────────────────
+  const loadPendingInvites = async () => {
+    if (!session?.user?.email) return;
+    try {
+      const res = await fetch(`/api/invite?to_email=${encodeURIComponent(session.user.email)}`);
+      const data = await res.json();
+      if (data.invites) setPendingInvites(data.invites);
+    } catch {}
+  };
+
+  const handleSendInvite = async () => {
+    if (!inviteDate || !inviteTime || !inviteConnection?.stranger_email) return;
+    setInviteSaving(true);
+    try {
+      const scheduled_at = new Date(`${inviteDate}T${inviteTime}`).toISOString();
+      const res = await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          to_email:    inviteConnection.stranger_email,
+          to_name:     inviteConnection.stranger_name,
+          scheduled_at,
+          message:     inviteMessage || null,
+        }),
+      });
+      if (res.ok) {
+        setInviteSent(true);
+        setTimeout(() => {
+          setShowInviteModal(false);
+          setInviteSent(false);
+          setInviteDate(''); setInviteTime(''); setInviteMessage('');
+          setInviteConnection(null);
+        }, 2000);
+      }
+    } catch {} finally { setInviteSaving(false); }
+  };
+
+  const handleRespondInvite = async (action: 'accept' | 'decline') => {
+    if (!currentInviteToken) return;
+    setAcceptLoading(true);
+    try {
+      const res = await fetch(`/api/invite/${currentInviteToken}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setAcceptDone(action === 'accept' ? 'accepted' : 'declined');
+        if (action === 'accept') await loadSlots();
+        setPendingInvites(prev => prev.filter(i => i.token !== currentInviteToken));
+        setTimeout(() => {
+          setShowAcceptModal(false);
+          setCurrentInvite(null);
+          setCurrentInviteToken(null);
+          setAcceptDone(null);
+          window.history.replaceState({}, '', '/');
+        }, 2500);
+      }
+    } catch {} finally { setAcceptLoading(false); }
   };
 
   // ── Load scheduled slots ──────────────────────────────────
@@ -1487,12 +1595,22 @@ export default function VideoChatApp() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
-                            <button
-                              onClick={() => { setScheduleNote(`Sesión con ${c.stranger_name ?? 'mi conexión'}`); setShowScheduleModal(true); }}
-                              style={{ padding: '6px 10px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 10, color: '#a5b4fc', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                            >
-                              Agendar
-                            </button>
+                            {c.stranger_email ? (
+                              <button
+                                onClick={() => { setInviteConnection(c); setShowInviteModal(true); }}
+                                style={{ padding: '6px 10px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 10, color: '#a5b4fc', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                Invitar
+                              </button>
+                            ) : (
+                              <button
+                                title="Este usuario no inició sesión con Google"
+                                onClick={() => { setScheduleNote(`Sesión con ${c.stranger_name ?? 'mi conexión'}`); setShowScheduleModal(true); }}
+                                style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                Agendar
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDeleteConnection(c.id)}
                               style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, color: 'rgba(239,68,68,0.7)', fontSize: 11, cursor: 'pointer' }}
@@ -1560,6 +1678,70 @@ export default function VideoChatApp() {
                   )}
                 </div>
 
+                {/* Gallery photos */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', margin: 0 }}>
+                      Mis fotos {galleryPhotos.length > 0 && `(${galleryPhotos.length}/9)`}
+                    </p>
+                    {galleryPhotos.length < 9 && (
+                      <button
+                        onClick={() => galleryInputRef.current?.click()}
+                        style={{ background: 'rgba(99,102,241,0.18)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 20, padding: '5px 12px', color: '#a5b4fc', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        + Subir
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => {
+                        const result = ev.target?.result as string;
+                        setGalleryPhotos(prev => {
+                          const next = [...prev, result].slice(0, 9);
+                          localStorage.setItem('va_gallery', JSON.stringify(next));
+                          return next;
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {galleryPhotos.map((photo, i) => (
+                      <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <button
+                          onClick={() => setGalleryPhotos(prev => {
+                            const next = prev.filter((_, idx) => idx !== i);
+                            localStorage.setItem('va_gallery', JSON.stringify(next));
+                            return next;
+                          })}
+                          style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,0.65)', border: 'none', color: 'white', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    {galleryPhotos.length === 0 && (
+                      <div
+                        onClick={() => galleryInputRef.current?.click()}
+                        style={{ aspectRatio: '1', borderRadius: 12, border: '1.5px dashed rgba(99,102,241,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', background: 'rgba(99,102,241,0.04)' }}
+                      >
+                        <span style={{ fontSize: 22 }}>📷</span>
+                        <span style={{ color: 'rgba(165,180,252,0.5)', fontSize: 11 }}>Subir foto</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* My reviews */}
                 {ratingsGiven.length > 0 && (
                   <div style={{ marginBottom: 20 }}>
@@ -1624,6 +1806,11 @@ export default function VideoChatApp() {
                         <span style={{ color: 'white', fontSize: 9, fontWeight: 800 }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
                       </div>
                     )}
+                    {tab.id === 'profile' && pendingInvites.length > 0 && (
+                      <div style={{ position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                        <span style={{ color: 'white', fontSize: 9, fontWeight: 800 }}>{pendingInvites.length > 9 ? '9+' : pendingInvites.length}</span>
+                      </div>
+                    )}
                   </div>
                   <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, letterSpacing: '0.04em' }}>{tab.label}</span>
                   {active && <div style={{ position: 'absolute', bottom: 0, width: 28, height: 2, background: 'linear-gradient(90deg,#4f46e5,#7c3aed)', borderRadius: 2 }} />}
@@ -1670,6 +1857,20 @@ export default function VideoChatApp() {
               <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Bio</p>
               <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 1.5, margin: 0 }}>{selectedProfile.bio}</p>
             </div>
+
+            {/* Photos */}
+            {MOCK_PHOTOS[selectedProfile.id] && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px' }}>Fotos</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {MOCK_PHOTOS[selectedProfile.id].map((p, i) => (
+                    <div key={i} style={{ aspectRatio: '1', borderRadius: 12, overflow: 'hidden', background: `linear-gradient(135deg, hsl(${p.hue},65%,22%), hsl(${p.hue + 30},65%,14%))`, border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
+                      {p.emoji}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Reviews */}
             <p style={{ color: 'rgba(165,180,252,0.5)', fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px' }}>Reseñas recientes</p>
@@ -1744,6 +1945,111 @@ export default function VideoChatApp() {
             >
               Omitir
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ INVITE MODAL ════════════════ */}
+      {showInviteModal && inviteConnection && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)' }}
+          onClick={() => setShowInviteModal(false)}>
+          <div style={{ background: 'rgba(12,12,38,0.98)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: '26px 26px 0 0', padding: '28px 24px 40px', width: '100%', maxWidth: 480, boxShadow: '0 -20px 80px rgba(99,102,241,0.15)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 22px' }} />
+            <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: '0 0 6px', textAlign: 'center' }}>Invitar a sesión</h2>
+            <p style={{ color: 'rgba(165,180,252,0.6)', fontSize: 13, textAlign: 'center', margin: '0 0 20px' }}>
+              {inviteConnection.stranger_name ?? 'Tu conexión'} recibirá un email con la invitación
+            </p>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 14, padding: '12px 14px', marginBottom: 20 }}>
+              {inviteConnection.stranger_photo ? (
+                <img src={inviteConnection.stranger_photo} alt="" referrerPolicy="no-referrer" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>👤</div>
+              )}
+              <div>
+                <div style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>{inviteConnection.stranger_name ?? 'Anónimo'}</div>
+                <div style={{ color: 'rgba(165,180,252,0.5)', fontSize: 12 }}>{inviteConnection.stranger_email}</div>
+              </div>
+            </div>
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Fecha</label>
+            <input type="date" value={inviteDate} onChange={e => setInviteDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              style={{ width: '100%', marginTop: 8, marginBottom: 16, padding: '13px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: 'white', fontSize: 15, boxSizing: 'border-box', colorScheme: 'dark' }} />
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Hora</label>
+            <input type="time" value={inviteTime} onChange={e => setInviteTime(e.target.value)}
+              style={{ width: '100%', marginTop: 8, marginBottom: 16, padding: '13px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: 'white', fontSize: 15, boxSizing: 'border-box', colorScheme: 'dark' }} />
+
+            <label style={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Mensaje (opcional)</label>
+            <textarea value={inviteMessage} onChange={e => setInviteMessage(e.target.value)}
+              placeholder="Ej: ¿Practicamos inglés juntos?" rows={2}
+              style={{ width: '100%', marginTop: 8, marginBottom: 20, padding: '13px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: 'white', fontSize: 14, boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit' }} />
+
+            <button onClick={handleSendInvite}
+              disabled={inviteSaving || inviteSent || !inviteDate || !inviteTime}
+              style={{ width: '100%', padding: '15px', borderRadius: 16, border: inviteSent ? '1px solid rgba(74,222,128,0.4)' : 'none', background: inviteSent ? 'rgba(74,222,128,0.12)' : (inviteSaving || !inviteDate || !inviteTime ? 'rgba(99,102,241,0.3)' : 'linear-gradient(135deg,#4f46e5,#7c3aed)'), color: inviteSent ? '#4ade80' : 'white', fontSize: 15, fontWeight: 800, cursor: inviteSaving || !inviteDate || !inviteTime ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+              {inviteSent ? '✓ Invitación enviada' : inviteSaving ? 'Enviando...' : 'Enviar invitación ✉️'}
+            </button>
+            <button onClick={() => setShowInviteModal(false)}
+              style={{ width: '100%', padding: '13px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 14, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ ACCEPT INVITE MODAL ════════════════ */}
+      {showAcceptModal && currentInvite && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(12px)' }}>
+          <div style={{ background: 'rgba(12,12,38,0.99)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: '26px 26px 0 0', padding: '28px 24px 44px', width: '100%', maxWidth: 480, boxShadow: '0 -20px 80px rgba(124,58,237,0.2)' }}>
+            <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 2, margin: '0 auto 22px' }} />
+
+            {acceptDone ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: 52, marginBottom: 14 }}>{acceptDone === 'accepted' ? '🎉' : '👋'}</div>
+                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: '0 0 8px' }}>
+                  {acceptDone === 'accepted' ? '¡Sesión confirmada!' : 'Invitación rechazada'}
+                </h2>
+                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14, margin: 0 }}>
+                  {acceptDone === 'accepted' ? 'La sesión aparece ahora en tu agenda.' : 'La invitación ha sido rechazada.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: '0 0 6px', textAlign: 'center' }}>Invitación a sesión</h2>
+                <p style={{ color: 'rgba(165,180,252,0.6)', fontSize: 13, textAlign: 'center', margin: '0 0 20px' }}>
+                  <strong style={{ color: '#a5b4fc' }}>{currentInvite.from_name ?? currentInvite.from_email}</strong> te invita a chatear
+                </p>
+
+                <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 14, padding: '16px', marginBottom: 24, textAlign: 'center' }}>
+                  <div style={{ color: 'rgba(165,180,252,0.6)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>Fecha y hora</div>
+                  <div style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>
+                    {new Date(currentInvite.scheduled_at).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </div>
+                  <div style={{ color: '#a5b4fc', fontWeight: 600, fontSize: 15 }}>
+                    {new Date(currentInvite.scheduled_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  {currentInvite.message && (
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 10, fontStyle: 'italic' }}>
+                      "{currentInvite.message}"
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button onClick={() => handleRespondInvite('decline')} disabled={acceptLoading}
+                    style={{ flex: 1, padding: '14px', borderRadius: 14, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', color: 'rgba(239,68,68,0.8)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Rechazar
+                  </button>
+                  <button onClick={() => handleRespondInvite('accept')} disabled={acceptLoading}
+                    style={{ flex: 2, padding: '14px', borderRadius: 14, background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', border: 'none', color: 'white', fontSize: 14, fontWeight: 800, cursor: 'pointer', boxShadow: '0 0 20px rgba(99,102,241,0.35)' }}>
+                    {acceptLoading ? 'Procesando...' : '✓ Aceptar invitación'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
